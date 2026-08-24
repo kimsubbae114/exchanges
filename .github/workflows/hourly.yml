@@ -1,0 +1,92 @@
+name: collect-and-publish
+
+# ★매시간 깨어나 55분간 수집하고, 리포트를 다시 그려 배포한다.
+#
+#   왜 "매시간 한 번 깨어나 그 안에서 5분 간격 12라운드" 인가
+#     GitHub 의 cron 은 5분 간격을 약속하지 않는다. 부하가 몰리면 수십 분 밀리고
+#     아예 건너뛰기도 한다. 매시간 한 번만 의지하고, 촘촘한 간격은 잡 안에서 만든다.
+#
+#   ★순위 판정에는 24시간 안에 표본 100개가 필요하다(agg.py 의 MIN_N).
+#     5분 간격이면 하루 288개라 여유가 있다.
+
+on:
+  schedule:
+    - cron: '3 * * * *'        # 매시 3분 (정각은 전 세계가 몰려 더 밀린다)
+  workflow_dispatch:            # 손으로도 돌릴 수 있게
+
+# 같은 워크플로가 겹쳐 돌면 데이터가 꼬인다. 앞의 것이 끝날 때까지 기다린다.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write               # 수집 결과를 저장소에 커밋해야 한다
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75         # 55분 수집 + 여유
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 수집 (5분 간격 12라운드)
+        run: python collect.py --rounds 12 --gap 300 --budget 3300
+
+      - name: 최근 24시간 집계
+        run: python agg.py
+
+      - name: 순위 이력 갱신
+        run: python history.py
+
+      - name: 리포트 생성
+        run: python build_report.py
+
+      # ★데이터를 저장소에 남긴다. 원시는 24시간만 유지되고(collect.py 가 지운다),
+      #   순위 이력은 계속 쌓인다. 이력이 없으면 "어제 몇 등이었나"를 알 수 없다.
+      - name: 커밋
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data public
+          git diff --quiet --cached || git commit -m "collect $(date -u '+%Y-%m-%d %H:%M') UTC"
+          # 다른 실행이 먼저 밀어 넣었을 수 있다 — 받아서 다시 얹는다
+          git pull --rebase --autostash origin ${{ github.ref_name }} || true
+          git push
+
+      - name: Cloudflare Pages 배포
+        if: ${{ env.CF_TOKEN != '' }}
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy public \
+            --project-name=exchange-liquidity --branch=main --commit-dirty=true
+        # ★토큰이 없으면 이 단계는 조용히 건너뛴다. 수집은 계속 쌓이므로
+        #   나중에 토큰을 넣으면 그때부터 배포된다.
+
+      - name: 요약
+        if: always()
+        run: |
+          echo "### 수집 결과" >> $GITHUB_STEP_SUMMARY
+          ls -la data/recent | tail -5 >> $GITHUB_STEP_SUMMARY || true
+          python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json, pathlib
+          p = pathlib.Path('data/rank_history.json')
+          if p.exists():
+              h = json.loads(p.read_text(encoding='utf-8'))
+              stamps = sorted({x['at'] for x in h})
+              print(f"- 순위 이력 {len(h)}줄 · 시점 {len(stamps)}개")
+              if stamps:
+                  cur = [x for x in h if x['at'] == stamps[-1] and x['group'] == 'MAJOR']
+                  for r in sorted(cur, key=lambda y: y['size'])[:2]:
+                      order = sorted([(d['rank'], v) for v, d in r['ranks'].items() if d['rank']])
+                      print(f"- ${r['size']:,}: " + " · ".join(f"{n}.{v}" for n, v in order))
+          PY
