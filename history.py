@@ -57,6 +57,18 @@ def main():
                     if not (h['at'] == at and h['group'] == g and h['size'] == s)]
             hist.append(row); added += 1
 
+    # ★순위가 하나도 안 나온 시점은 남기지 않는다.
+    #   표본이 아직 적어(MIN_N 미달) 아무도 줄 세울 수 없는 상태인데,
+    #   그걸 이력에 남기면 추이 선이 이유 없이 끊어져 보인다.
+    #   "데이터가 없는 것"과 "순위를 매길 수 없는 것"은 다르다.
+    empty = {a for a in {h['at'] for h in hist}
+             if not any(d.get('rank') for h in hist if h['at'] == a
+                        for d in h['ranks'].values())}
+    if empty:
+        hist = [h for h in hist if h['at'] not in empty]
+        print('   ★순위가 없는 시점 %d개는 기록하지 않았다 (표본 부족) — %s'
+              % (len(empty), ' · '.join(sorted(empty))))
+
     hist.sort(key=lambda h: (h['at'], h['group'], h['size']))
     # 오래된 것 정리 — 시각 기준으로 최근 것부터 남긴다
     stamps = sorted({h['at'] for h in hist})
