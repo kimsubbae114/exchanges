@@ -14,13 +14,19 @@ on:
     - cron: '3 * * * *'        # 매시 3분 (정각은 전 세계가 몰려 더 밀린다)
   workflow_dispatch:            # 손으로도 돌릴 수 있게
 
-# 같은 워크플로가 겹쳐 돌면 데이터가 꼬인다. 앞의 것이 끝날 때까지 기다린다.
 concurrency:
   group: collect
   cancel-in-progress: false
 
 permissions:
   contents: write               # 수집 결과를 저장소에 커밋해야 한다
+
+# ★토큰은 여기(job 바깥)에 둬야 한다.
+#   step 안에 두면 그 step 의 `if:` 조건이 **env 가 채워지기 전에** 평가돼
+#   배포가 언제나 건너뛰어진다. 실제로 그렇게 돼 있었다.
+env:
+  CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
 jobs:
   run:
@@ -49,44 +55,44 @@ jobs:
       - name: 리포트 생성
         run: python build_report.py
 
-      # ★데이터를 저장소에 남긴다. 원시는 24시간만 유지되고(collect.py 가 지운다),
-      #   순위 이력은 계속 쌓인다. 이력이 없으면 "어제 몇 등이었나"를 알 수 없다.
+      # ★밀어 넣기가 거부되면 다시 받아 얹고 재시도한다.
+      #   한 번에 실패해도 다음 회차에 다시 올라가지만, 그 회차가 통째로
+      #   실패로 보이면 진짜 고장과 구분이 안 된다. 그래서 여기서 끝낸다.
       - name: 커밋
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A data public
-          git diff --quiet --cached || git commit -m "collect $(date -u '+%Y-%m-%d %H:%M') UTC"
-          # 다른 실행이 먼저 밀어 넣었을 수 있다 — 받아서 다시 얹는다
-          git pull --rebase --autostash origin ${{ github.ref_name }} || true
-          git push
+          if git diff --quiet --cached; then
+            echo "바뀐 것이 없다"; exit 0
+          fi
+          git commit -m "collect $(date -u '+%Y-%m-%d %H:%M') UTC"
+          for i in 1 2 3 4 5; do
+            if git push; then echo "밀어 넣음 (시도 $i)"; exit 0; fi
+            echo "밀어 넣기 거부됨 — 다시 받아 얹는다 (시도 $i)"
+            git pull --rebase --autostash origin "${{ github.ref_name }}" || true
+            sleep $((i * 5))
+          done
+          echo "::error::다섯 번 시도했는데도 밀어 넣지 못했다"
+          exit 1
 
       - name: Cloudflare Pages 배포
-        if: ${{ env.CF_TOKEN != '' }}
+        if: env.CF_TOKEN != ''
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT }}
         run: |
           npx --yes wrangler@4 pages deploy public \
             --project-name=exchange-liquidity --branch=main --commit-dirty=true
-        # ★토큰이 없으면 이 단계는 조용히 건너뛴다. 수집은 계속 쌓이므로
-        #   나중에 토큰을 넣으면 그때부터 배포된다.
+
+      - name: 배포를 건너뛴 이유
+        if: env.CF_TOKEN == ''
+        run: |
+          echo "::notice::CLOUDFLARE_API_TOKEN 이 없어 배포를 건너뛰었다. 수집은 계속 쌓인다."
+          echo "- ⚠️ Cloudflare 토큰이 없어 배포하지 않았다" >> $GITHUB_STEP_SUMMARY
 
       - name: 요약
         if: always()
         run: |
           echo "### 수집 결과" >> $GITHUB_STEP_SUMMARY
-          ls -la data/recent | tail -5 >> $GITHUB_STEP_SUMMARY || true
-          python - <<'PY' >> $GITHUB_STEP_SUMMARY
-          import json, pathlib
-          p = pathlib.Path('data/rank_history.json')
-          if p.exists():
-              h = json.loads(p.read_text(encoding='utf-8'))
-              stamps = sorted({x['at'] for x in h})
-              print(f"- 순위 이력 {len(h)}줄 · 시점 {len(stamps)}개")
-              if stamps:
-                  cur = [x for x in h if x['at'] == stamps[-1] and x['group'] == 'MAJOR']
-                  for r in sorted(cur, key=lambda y: y['size'])[:2]:
-                      order = sorted([(d['rank'], v) for v, d in r['ranks'].items() if d['rank']])
-                      print(f"- ${r['size']:,}: " + " · ".join(f"{n}.{v}" for n, v in order))
-          PY
+          python summary.py >> $GITHUB_STEP_SUMMARY || echo "- 요약 실패" >> $GITHUB_STEP_SUMMARY
