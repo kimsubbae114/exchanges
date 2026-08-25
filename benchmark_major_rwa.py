@@ -211,7 +211,9 @@ def book_binance(c):
     r = S.get('https://fapi.binance.com/fapi/v1/depth',
               params={'symbol': s, 'limit': 1000}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = r.json()
     return {'bids': [[float(p), float(q)] for p, q in d.get('bids', [])],
             'asks': [[float(p), float(q)] for p, q in d.get('asks', [])]}
@@ -222,7 +224,9 @@ def book_bybit(c):
     r = S.get('https://api.bybit.com/v5/market/orderbook',
               params={'category': 'linear', 'symbol': s, 'limit': 500}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = (r.json().get('result') or {})
     return {'bids': [[float(p), float(q)] for p, q in d.get('b', [])],
             'asks': [[float(p), float(q)] for p, q in d.get('a', [])]}
@@ -236,7 +240,9 @@ def book_okx(c):
     r = S.get('https://www.okx.com/api/v5/market/books-full',
               params={'instId': s, 'sz': 5000}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = (r.json().get('data') or [{}])[0]
     if not d.get('bids'):
         return None
@@ -249,7 +255,9 @@ def book_mexc(c):
     m = ct('mexc', s)
     r = S.get('https://contract.mexc.com/api/v1/contract/depth/%s' % s, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = (r.json().get('data') or {})
     if not d.get('bids'):
         return None
@@ -263,7 +271,9 @@ def book_kucoin(c):
     r = S.get('https://api-futures.kucoin.com/api/v1/level2/snapshot',
               params={'symbol': s}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = (r.json().get('data') or {})
     if not d.get('bids'):
         return None
@@ -275,7 +285,9 @@ def book_grvt(c):
     r = S.post('https://market-data.grvt.io/full/v1/book',
                json={'instrument': sym('grvt', c), 'depth': 100}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = (r.json().get('result') or {})
     if not d.get('bids'):
         return None
@@ -308,7 +320,9 @@ def book_hyperliquid(c, nsig=4):
         q['nSigFigs'] = nsig
     r = S.post('https://api.hyperliquid.xyz/info', json=q, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     lv = r.json().get('levels') or [[], []]
     if not lv[0]:
         return None
@@ -320,7 +334,9 @@ def book_aster(c):
     r = S.get('https://fapi.asterdex.com/fapi/v1/depth',
               params={'symbol': sym('aster', c), 'limit': 500}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = r.json()
     if not d.get('bids'):
         return None
@@ -337,7 +353,9 @@ def book_lighter(c):
     r = S.get('https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders',
               params={'market_id': mid, 'limit': 200}, timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     d = r.json()
 
     def agg(rows, reverse):
@@ -355,7 +373,9 @@ def book_extended(c):
     r = S.get('https://api.starknet.extended.exchange/api/v1/info/markets/%s/orderbook'
               % sym('extended', c), timeout=TIMEOUT)
     if not _ok(r):
-        return None
+        # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
+        #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
+        return {'fail': True}
     p = r.json()
     if p.get('status') != 'OK':
         return None
@@ -398,6 +418,9 @@ def slippage(book, usd, side, band=PRICE_BAND):
        ★소비 레벨 수를 남기는 이유 — 깊이 상한(하이퍼리퀴드 20 등)에 닿았는지 봐야
          책이 얕아서인지 진짜 유동성이 없어서인지 갈린다.
     """
+    if book and book.get('fail'):
+        # ★호출 실패 — 지역 차단·장애 등. 상장이 없는 것과는 전혀 다르다.
+        return None, 'api_fail', 0
     if not book or not book.get('bids') or not book.get('asks'):
         return None, 'no_book', 0
     bids, asks = book['bids'], book['asks']

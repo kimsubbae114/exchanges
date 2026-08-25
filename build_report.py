@@ -88,6 +88,9 @@ td{padding:0;text-align:center;border-bottom:1px solid #172033;white-space:nowra
 .cell.excl .v{color:#fecaca}
 .xtag{display:block;font-size:9px;color:#fca5a5;font-weight:700;margin-top:1px;letter-spacing:.3px}
 .cell.na{color:#3f4a5f;font-size:11px;padding:13px 8px}
+/* ★호출 자체가 막힌 칸 — '상장 없음'과 전혀 다르다. 눈에 띄게 둔다. */
+.cell.blk{background:#2a1a1a;color:#fca5a5;font-size:10.5px;padding:11px 8px;
+          outline:1px solid #7f1d1d;outline-offset:-2px;font-weight:700}
 .rk{display:inline-block;min-width:14px;font-size:9.5px;color:#e2e8f0;font-weight:700;opacity:.55}
 .grvtcol{border-left:2px solid #94a3b8;border-right:2px solid #94a3b8}
 
@@ -360,7 +363,7 @@ function initTrend(){
   if (!HIST.length){ document.getElementById('trendNone').hidden = false;
                      document.getElementById('trendWrap').hidden = true; return; }
   const sizes = [...new Set(HIST.map(h => h.size))].sort((a, b) => a - b);
-  TS = sizes[0];
+  TS = sizes.indexOf(100000) >= 0 ? 100000 : sizes[0];
   const fill = (id, items, cur, on) => { const s = document.getElementById(id);
     s.innerHTML = items.map(x => '<option value="' + x[0] + '"' +
       (String(x[0]) === String(cur) ? ' selected' : '') + '>' + x[1] + '</option>').join('');
@@ -429,13 +432,16 @@ function pairTable(g){
     for(const v of cols){
       const c = t[v] && t[v][s];
       const cls = v==='grvt' ? 'grvtcol' : '';
+      // ★호출이 막힌 칸은 '상장 없음'과 구분해 보여 준다.
+      //   섞으면 차단당한 거래소가 조용히 빠져 화면이 거짓말을 한다.
+      if(c && c.blocked){ h += '<td class="'+cls+'"><div class="cell blk" '
+        + 'title="this server could not reach the venue - not a missing listing">blocked</div></td>'; continue; }
       if(!c || c.med==null){ h += '<td class="'+cls+'"><div class="cell na">n/a</div></td>'; continue; }
       const ex = !c.rankable;
       /* ★detail lives in the tooltip, not on the face of the cell */
       const tip = coin+' · '+(VNAME[v]||v)+' · '+fmtUsd(SZ[ZI])
         + '\nmedian ' + c.med.toFixed(3) + ' bps'
         + '\np10–p90 ' + (c.p10==null?'—':c.p10.toFixed(2)+' – '+c.p90.toFixed(2))
-        + '\nsigma ' + (c.sd==null?'—':c.sd.toFixed(2))
         + '\nbuy/sell ' + (c.med_buy==null?'—':c.med_buy.toFixed(2)) + ' / ' + (c.med_sell==null?'—':c.med_sell.toFixed(2))
         + '\nfilled ' + (c.fill*100).toFixed(0) + '% of ' + c.n_listed + ' rounds'
         + (ex ? '\n→ excluded from ranking (could not fill the size)' : '');
@@ -443,7 +449,7 @@ function pairTable(g){
          + 'style="background:'+rankColor(rk[v],n)+'">'
          + '<div class="v">'+c.med.toFixed(c.med<1?2:1)+'<span class="rk"> '+(ex?'':(rk[v]||''))+'</span></div>'
          + (ex ? '<span class="xtag">unfilled</span>'
-               : '<div class="m">&sigma;'+(c.sd==null?'—':c.sd.toFixed(1))+'</div>')
+               : '')
          + '</div></td>';
     }
     h += '</tr>';
@@ -508,8 +514,7 @@ function drawDist(){
        + '<div class="box" style="left:'+X(c.p25)+'px;width:'+Math.max(2,X(c.p75)-X(c.p25))+'px"></div>'
        + '<div class="med" style="left:'+X(c.med)+'px"></div></div></td>'
        + '<td><div class="cell"><span class="v">'+c.med.toFixed(2)+'</span></div></td>'
-       + '<td><div class="cell"><span class="v" style="color:'+(c.sd>10?'#fca5a5':'#94a3b8')+'">'
-       + (c.sd==null?'—':c.sd.toFixed(1))+'</span></div></td>'
+      + '<td><div class="cell na">—</div></td>'
        + '<td><div class="cell m" style="font-size:11px;opacity:1">'
        + (c.med_buy==null?'—':c.med_buy.toFixed(2))+' / '+(c.med_sell==null?'—':c.med_sell.toFixed(2))
        + '</div></td></tr>';

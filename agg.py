@@ -56,6 +56,9 @@ print('%s행 · 라운드 %d · 종목 %d' % ('{:,}'.format(len(df)), df['round'
 df['ok'] = df['status'] == 'ok'
 df['short'] = df['status'].isin(['book_short', 'band_short'])
 df['nobook'] = df['status'] == 'no_book'
+# ★호출 실패는 '미상장'이 아니다. 섞으면 차단당한 거래소가 조용히 빠져
+#   화면이 "그 거래소는 상장이 없다"고 거짓말을 한다.
+df['apifail'] = df['status'] == 'api_fail'
 main = df[df.venue != 'hyperliquid_raw'].copy()
 VENUES = sorted(main.venue.unique())
 SIZES = [int(s) for s in sorted(main.usd_size.unique())]
@@ -64,13 +67,17 @@ SIZES = [int(s) for s in sorted(main.usd_size.unique())]
 def cell(d):
     """한 칸 = 슬리피지 분포 + 체결 성공률 + 흔들림 + 표본수.
     ★체결 성공률은 **그 종목이 상장된 관측**만 분모로 한다(미상장은 빼야 공정하다)."""
-    listed = d[~d.nobook]
+    # 호출이 실패한 관측은 분모에서 뺀다 — 체결 성공률을 깎으면 안 된다
+    fails = int(d.apifail.sum()) if 'apifail' in d else 0
+    listed = d[~d.nobook & ~d.get('apifail', False)]
     if not len(listed):
-        return None
+        # 전부 호출 실패였다면 그 사실을 남긴다
+        return {'n': 0, 'api_fail': fails, 'blocked': fails > 0} if fails else None
     okd = listed[listed.ok]
     n = len(okd)
     fill = float(okd.shape[0] / listed.shape[0])
-    out = {'n': int(n), 'n_listed': int(len(listed)), 'fill': round(fill, 4)}
+    out = {'n': int(n), 'n_listed': int(len(listed)), 'fill': round(fill, 4),
+           'api_fail': fails}
     if n:
         q = okd.slippage_bps.quantile([.1, .25, .5, .75, .9])
         out.update({'p10': round(float(q[.1]), 3), 'p25': round(float(q[.25]), 3),
