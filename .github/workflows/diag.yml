@@ -1,0 +1,49 @@
+name: diag-venue-access
+
+# ★왜 이걸 만드나
+#   GitHub Actions 에서 바이낸스·바이빗이 전 종목 실패한다. 원인을 "미국 IP 차단"으로
+#   짐작했지만 **실제 응답을 본 적이 없다.** 추정만으로 서버를 사서 옮기면,
+#   원인이 다를 경우 돈과 시간을 버린다. 여기서 눈으로 확인한다.
+#
+#   손으로 돌린다: Actions → diag-venue-access → Run workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 이 러너가 어디에 있나
+        run: |
+          echo "### 러너 위치" >> $GITHUB_STEP_SUMMARY
+          curl -s --max-time 15 https://ipinfo.io/json \
+            | tr ',' '\n' | grep -E '"(ip|city|region|country|org)"' \
+            | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY || echo "- 위치 확인 실패" >> $GITHUB_STEP_SUMMARY
+
+      - name: 거래소별 실제 응답
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 거래소 응답" >> $GITHUB_STEP_SUMMARY
+          echo '| 거래소 | HTTP | 응답 앞부분 |' >> $GITHUB_STEP_SUMMARY
+          echo '|---|---|---|' >> $GITHUB_STEP_SUMMARY
+          probe () {
+            name="$1"; url="$2"
+            code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 20 "$url" || echo "000")
+            body=$(head -c 160 /tmp/body | tr '\n' ' ' | tr '|' '/' | sed 's/  */ /g')
+            echo "| $name | $code | \`${body}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "$name -> $code"
+          }
+          probe binance   "https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=5"
+          probe binance-alt "https://fapi1.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=5"
+          probe bybit     "https://api.bybit.com/v5/market/orderbook?category=linear&symbol=BTCUSDT&limit=5"
+          probe okx       "https://www.okx.com/api/v5/market/books?instId=BTC-USDT-SWAP&sz=5"
+          probe mexc      "https://contract.mexc.com/api/v1/contract/depth/BTC_USDT"
+          probe kucoin    "https://api-futures.kucoin.com/api/v1/level2/depth20?symbol=XBTUSDTM"
+          probe grvt      "https://market-data.grvt.io/full/v1/book"
+          probe hyperliquid "https://api.hyperliquid.xyz/info"
+
+      - name: 판정
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**451/403 이면 지역 차단, 429/418 이면 속도 제한, 000 이면 연결 실패다.**" >> $GITHUB_STEP_SUMMARY
