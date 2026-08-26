@@ -397,7 +397,9 @@ FETCH = {'binance': book_binance, 'bybit': book_bybit, 'okx': book_okx,
 # ══════════════════════════════════════════════════════════════════════════════
 def book_usd(book):
     """책 전체가 담는 달러 — 슬리피지가 좋아 보여도 이게 작으면 못 채운다."""
-    if not book:
+    # ★호출이 실패한 표식({'fail':True})도 여기로 온다. 호가가 없으므로 잴 수 없다.
+    #   이걸 빠뜨려 KeyError 로 수집이 통째로 멈춘 적이 있다.
+    if not book or not book.get('bids') or not book.get('asks'):
         return None, None
     b = sum(p * q for p, q in book['bids'])
     a = sum(p * q for p, q in book['asks'])
@@ -491,7 +493,8 @@ def run_round(groups=None, venues=None, log=print, sizes=None, pace=PACE_SEC, rn
                 time.sleep(pace * _BACKOFF['mult'])
             first = False
             books = fetch_all(coin, venues)
-            live = [v for v in venues if books.get(v)]
+            # ★실패 표식은 '살아 있는 거래소'가 아니다. 세면 통계가 오염된다.
+            live = [v for v in venues if books.get(v) and not books[v].get('fail')]
             log('  %-5s %-6s 응답 %2d/%d  %s' % (gname, coin, len(live), len(venues),
                                                 ' '.join(sorted(set(venues) - set(live))) or ''))
             for v in list(venues) + (['hyperliquid_raw'] if 'hyperliquid' in venues else []):
