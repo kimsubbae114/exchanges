@@ -1,0 +1,64 @@
+name: deploy
+
+# 저장소에 새 리포트가 들어오면 Cloudflare Pages 로 올린다.
+#
+# ★수집은 오사카 서버가 한다. 여기서는 **배포만** 한다.
+#   서버가 data/ 와 public/ 을 밀어 넣으면 이 워크플로가 받아 올린다.
+#
+#   토큰이 없으면 올리지 않고, **왜 못 올렸는지 화면에 남긴다.**
+#   조용히 건너뛰면 "왜 사이트가 안 바뀌지" 하고 한참 헤매게 된다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'          # 리포트가 바뀔 때만
+  workflow_dispatch:          # 손으로도 (토큰이 들어갔는지 확인할 때 쓴다)
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+# ★job 바깥에 둬야 step 의 `if:` 가 이 값을 볼 수 있다.
+#   step 안에 두면 if 가 먼저 평가돼 언제나 건너뛴다(실제로 그랬다).
+env:
+  CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 무엇이 준비됐나
+        run: |
+          echo "### 배포 준비 상태" >> $GITHUB_STEP_SUMMARY
+          [ -n "$CF_TOKEN" ]   && echo "- CLOUDFLARE_API_TOKEN  ✅ 있음" >> $GITHUB_STEP_SUMMARY \
+                               || echo "- CLOUDFLARE_API_TOKEN  ❌ **없음**" >> $GITHUB_STEP_SUMMARY
+          [ -n "$CF_ACCOUNT" ] && echo "- CLOUDFLARE_ACCOUNT_ID ✅ 있음" >> $GITHUB_STEP_SUMMARY \
+                               || echo "- CLOUDFLARE_ACCOUNT_ID ❌ **없음**" >> $GITHUB_STEP_SUMMARY
+          if [ -f public/index.html ]; then
+            echo "- 리포트 $(du -h public/index.html | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 리포트 ❌ **없음**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cloudflare Pages 배포
+        if: env.CF_TOKEN != '' && env.CF_ACCOUNT != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT }}
+        run: |
+          npx --yes wrangler@4 pages deploy public \
+            --project-name=exchange-liquidity --branch=main --commit-dirty=true
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ https://exchange-liquidity.pages.dev 로 올렸다" >> $GITHUB_STEP_SUMMARY
+
+      - name: 토큰이 없어 건너뛴다
+        if: env.CF_TOKEN == '' || env.CF_ACCOUNT == ''
+        run: |
+          echo "::warning::Cloudflare 토큰이 없어 배포하지 않았다"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **배포하지 않았다.** Settings → Secrets and variables → Actions 에" >> $GITHUB_STEP_SUMMARY
+          echo "\`CLOUDFLARE_API_TOKEN\` 과 \`CLOUDFLARE_ACCOUNT_ID\` 를 넣어야 한다." >> $GITHUB_STEP_SUMMARY
