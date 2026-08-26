@@ -85,6 +85,24 @@ def cell(d):
                     'p90': round(float(q[.9]), 3)})
         pr = okd.groupby('round').slippage_bps.median()
         out['sd'] = round(float(pr.std()), 3) if len(pr) > 2 else None
+
+        # ★수수료 — 순위에는 안 쓰지만, 화면에서 켜고 끌 수 있게 값을 담아 둔다.
+        #   "슬리피지는 좋은데 수수료가 비싼 곳"을 가리면 실제 비용을 못 본다.
+        fb = okd.fee_bps.dropna()
+        out['fee'] = round(float(fb.iloc[0]), 3) if len(fb) else None
+
+        # ★튐(스파이크) — 중위만 보면 "가끔 크게 나쁜 곳"과 "늘 고른 곳"이 같아 보인다.
+        #   기준은 **그 칸의 중위값**이다. 절대 bps 로 자르면 BTC 는 영원히 안 튀고
+        #   ADA 는 늘 튀는 것으로 보인다.
+        med = float(q[.5])
+        if med > 0:
+            ratio = okd.slippage_bps / med
+            out['spike2'] = round(float((ratio >= 2).mean()) * 100, 2)   # 중위의 2배 이상 비율(%)
+            out['spike5'] = round(float((ratio >= 5).mean()) * 100, 2)   # 5배 이상
+            out['worst'] = round(float(okd.slippage_bps.max()), 3)       # 최악 한 번
+            out['worst_x'] = round(float(okd.slippage_bps.max() / med), 1)  # 중위의 몇 배
+        else:
+            out['spike2'] = out['spike5'] = out['worst'] = out['worst_x'] = None
         for side in ('buy', 'sell'):
             s = okd[okd.side == side].slippage_bps
             out['med_' + side] = round(float(s.median()), 3) if len(s) else None
@@ -105,7 +123,18 @@ res = {'meta': {
     'coins': int(df.coin.nunique()), 'venues': VENUES, 'sizes': SIZES,
     'span': [str(df.ts.min()), str(df.ts.max())],
     'min_n': MIN_N, 'max_short': MAX_SHORT,
+    'window_h': WINDOW_H,
+    # ★측정 기준 — 공개 자료이므로 화면에 그대로 밝힌다
+    'interval_sec': None,   # 아래에서 실측해 채운다
 }}
+
+# 라운드 사이 실제 간격을 재서 적는다. "5분마다"라고 적어 놓고 실제로 다르면 거짓말이 된다.
+_t = pd.to_datetime(df.groupby('round').ts.min(), errors='coerce').sort_values()
+if len(_t) > 2:
+    _gap = _t.diff().dt.total_seconds().dropna()
+    _gap = _gap[(_gap > 0) & (_gap < 3600)]
+    if len(_gap):
+        res['meta']['interval_sec'] = int(round(float(_gap.median())))
 
 # ── 상장 여부 ────────────────────────────────────────────────────────────────
 cov = main[~main.nobook].groupby(['group', 'coin', 'venue']).size().unstack(fill_value=0)

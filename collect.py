@@ -57,6 +57,12 @@ def main():
 
     import benchmark_major_rwa as B          # 수집 본체는 손대지 않고 그대로 쓴다
 
+    # ★반드시 먼저 불러야 한다. main() 을 거치지 않고 run_round() 를 직접 부르므로
+    #   이걸 빠뜨리면 초기화가 통째로 건너뛰어진다. 실제로 그래서
+    #     · lighter 가 market_id 를 몰라 전 종목 no_book 이 되고
+    #     · mexc 계약크기가 기본값 1.0 이 되어 슬리피지가 어긋났다.
+    B.load_contract_sizes(log=lambda *x: None)
+
     RECENT.mkdir(parents=True, exist_ok=True)
     out = RECENT / (dt.datetime.now().strftime('%Y%m%d_%H') + '.csv.gz')
     print('★수집 시작 — %d라운드 · %d초 간격 · 예산 %d분' % (a.rounds, a.gap, a.budget // 60))

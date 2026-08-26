@@ -39,6 +39,11 @@ ORDER = {
 }
 LABEL = {'MAJOR': 'Major crypto perps', 'RWA': 'Equity & gold perps (RWA)'}
 
+# ★측정 간격은 **실제로 잰 값**을 쓴다. "5분마다"라고 적어 놓고 다르면 거짓말이 된다.
+_iv = M.get('interval_sec')
+_every = ('%d min' % round(_iv / 60)) if _iv and _iv >= 60 else          (('%d sec' % _iv) if _iv else 'irregular interval')
+SITE = 'Osaka, Japan'          # 수집 서버 위치 — 지역에 따라 접근 가능한 거래소가 다르다
+
 HTML = r"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perp Liquidity Benchmark — where does GRVT stand?</title>
@@ -136,12 +141,25 @@ td{padding:0;text-align:center;border-bottom:1px solid #172033;white-space:nowra
 </style></head><body><div class="wrap">
 
 <h1>Perp Liquidity Benchmark &mdash; where does GRVT stand?</h1>
-<div class="sub">__NV__ venues &times; __NC__ pairs &times; 5 order sizes &middot;
-<b>__ROUNDS__ rounds</b> over 4 hours (1-min interval) &middot; __ROWS__ observations &middot; __SPAN__ KST<br>
-Median slippage in <b>bps</b>, lower is better &middot; taker <b>fees excluded</b> &middot;
-order-book simulation of a market order against mid</div>
+<div class="sub">
+<b>__NV__ venues</b> &times; __NC__ pairs &times; 5 order sizes &middot;
+order-book snapshot every <b>__EVERY__</b>, averaged over the last <b>__WIN__ hours</b><br>
+<b>__ROUNDS__ rounds</b> &middot; __ROWS__ observations &middot; __SPAN__ KST &middot;
+measured from <b>__SITE__</b><br>
+Each figure is the <b>median</b> across all rounds in the window &mdash;
+slippage in <b>bps</b> against mid, <b>lower is better</b>.
+A cell is dropped from the ranking if it has fewer than <b>__MINN__ readings</b>
+or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 
 <div id="verdict" class="verdict"></div>
+
+<div class="ctrl" style="margin-top:12px">
+  <b>COST</b>
+  <div class="seg" id="segFee"></div>
+  <span class="badge" id="feeNote">taker fees are excluded by default &mdash;
+    they vary by tier and promotion, so they are a poor basis for comparison.
+    Turn them on to see what a taker actually pays.</span>
+</div>
 
 <!-- ─────────── 순위 추이 ───────────
      ★차트를 둘로 나눈 이유
@@ -342,7 +360,7 @@ function drawTrendTable(){
   rows.forEach(r => { h += '<tr><td>' + fmtAt(r.at) + '</td>' + vens.map(v => {
     const c = r.ranks[v] || {};
     return '<td' + (v === TV ? ' class="me"' : '') + '>' +
-           (c.rank ? c.rank + (c.med != null ? '<i>' + c.med.toFixed(2) + '</i>' : '') : '—') +
+           (c.rank ? c.rank + (c.med != null ? '<i>' + shown.toFixed(2) + '</i>' : '') : '—') +
            '</td>'; }).join('') + '</tr>'; });
   document.getElementById('trendTable').innerHTML = h + '</table>';
 }
@@ -383,6 +401,13 @@ const VNAME = {grvt:'GRVT', hyperliquid:'Hyperliquid', binance:'Binance', bybit:
 const CEX = ['binance','bybit','okx','mexc','kucoin'];
 const GROUPS = ['MAJOR','RWA'];
 let ZI = 2, DG = 'MAJOR', COIN = '__ALL__';
+/* ★수수료 포함 여부 — 기본은 **제외**다(사용자 결정).
+   수수료는 등급·프로모션에 따라 달라서 비교의 기준으로 삼기 어렵다.
+   다만 "슬리피지는 좋은데 수수료가 비싼 곳"이 가려지므로 켤 수 있게 둔다. */
+let WITHFEE = false;
+/* 값 하나를 꺼낼 때는 언제나 이 함수를 쓴다 — 표·순위·색이 따로 놀지 않게. */
+function val(c){ if(!c || c.med==null) return null;
+  return WITHFEE ? c.med + (c.fee||0) : c.med; }
 
 const fmtUsd = s => s>=1e6 ? '$'+(s/1e6)+'M' : '$'+(s/1000)+'k';
 const coinsOf = g => (ORDER[g]||[]).filter(c => D.by_coin[g] && D.by_coin[g][c]);
@@ -399,8 +424,10 @@ function rankColor(rank, total){
 }
 
 function rankRow(t, s){
+  /* ★순위도 val() 로 잰다. 수수료를 켜면 순위가 실제로 바뀌어야 한다 —
+     숫자만 바뀌고 줄이 그대로면 화면이 거짓말을 한다. */
   const arr = VEN.filter(v=>t[v]&&t[v][s]&&t[v][s].rankable&&t[v][s].med!=null)
-                 .map(v=>[v,t[v][s].med]).sort((a,b)=>a[1]-b[1]);
+                 .map(v=>[v,val(t[v][s])]).sort((a,b)=>a[1]-b[1]);
   const m={}; arr.forEach(([v],i)=>m[v]=i+1);
   return [m, arr.length];
 }
@@ -438,9 +465,16 @@ function pairTable(g){
         + 'title="this server could not reach the venue - not a missing listing">blocked</div></td>'; continue; }
       if(!c || c.med==null){ h += '<td class="'+cls+'"><div class="cell na">n/a</div></td>'; continue; }
       const ex = !c.rankable;
+      const shown = val(c);
       /* ★detail lives in the tooltip, not on the face of the cell */
       const tip = coin+' · '+(VNAME[v]||v)+' · '+fmtUsd(SZ[ZI])
         + '\nmedian ' + c.med.toFixed(3) + ' bps'
+        + (c.fee!=null ? '
+taker fee ' + c.fee.toFixed(2) + ' bps  ->  with fee ' + (c.med+c.fee).toFixed(3) : '')
+        + (c.spike2!=null ? '
+spikes over median: ' + c.spike2.toFixed(1) + '% >2x, ' + c.spike5.toFixed(1) + '% >5x' : '')
+        + (c.worst!=null ? '
+worst single reading ' + c.worst.toFixed(2) + ' bps (' + c.worst_x + 'x median)' : '')
         + '\np10–p90 ' + (c.p10==null?'—':c.p10.toFixed(2)+' – '+c.p90.toFixed(2))
         + '\nbuy/sell ' + (c.med_buy==null?'—':c.med_buy.toFixed(2)) + ' / ' + (c.med_sell==null?'—':c.med_sell.toFixed(2))
         + '\nfilled ' + (c.fill*100).toFixed(0) + '% of ' + c.n_listed + ' rounds'
@@ -513,7 +547,7 @@ function drawDist(){
        + '<div class="whisk" style="left:'+X(c.p10)+'px;width:'+(X(c.p90)-X(c.p10))+'px"></div>'
        + '<div class="box" style="left:'+X(c.p25)+'px;width:'+Math.max(2,X(c.p75)-X(c.p25))+'px"></div>'
        + '<div class="med" style="left:'+X(c.med)+'px"></div></div></td>'
-       + '<td><div class="cell"><span class="v">'+c.med.toFixed(2)+'</span></div></td>'
+       + '<td><div class="cell"><span class="v">'+shown.toFixed(2)+'</span></div></td>'
       + '<td><div class="cell na">—</div></td>'
        + '<td><div class="cell m" style="font-size:11px;opacity:1">'
        + (c.med_buy==null?'—':c.med_buy.toFixed(2))+' / '+(c.med_sell==null?'—':c.med_sell.toFixed(2))
@@ -565,6 +599,8 @@ mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI
       function(k){ ZI = +k; drawAll(); });
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
       function(k){ DG = k; refreshCoinSel(); drawDist(); });
+mkSeg('segFee', [['0','slippage only'], ['1','+ taker fee']], WITHFEE ? '1' : '0',
+      function(k){ WITHFEE = (k === '1'); drawAll(); });
 drawAll();
 initTrend();
 </script></body></html>"""
@@ -578,6 +614,11 @@ HTML = (HTML.replace('__NV__', str(len(M['venues'])))
             .replace('__ORDER__', json.dumps(ORDER))
             .replace('__LABEL__', json.dumps(LABEL))
             .replace('__DATA__', json.dumps(D, ensure_ascii=False, separators=(',', ':')))
-            .replace('__HIST__', json.dumps(HIST, ensure_ascii=False, separators=(',', ':'))))
+            .replace('__HIST__', json.dumps(HIST, ensure_ascii=False, separators=(',', ':')))
+            .replace('__EVERY__', _every)
+            .replace('__WIN__', str(M.get('window_h', 24)))
+            .replace('__SITE__', SITE)
+            .replace('__MINN__', str(M.get('min_n', 100)))
+            .replace('__MAXSHORT__', '%g' % (M.get('max_short', .05) * 100)))
 OUT.write_text(HTML, encoding='utf-8')
 print('-> %s (%.2f MB)' % (OUT, OUT.stat().st_size / 1e6))
