@@ -50,10 +50,24 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ env.CF_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT }}
         run: |
+          # ★실패해도 메시지를 요약에 남긴다. exit code 만으로는 원인을 알 수 없다.
+          set +e
           npx --yes wrangler@4 pages deploy public \
-            --project-name=exchange-liquidity --branch=main --commit-dirty=true
+            --project-name=exchange-liquidity --branch=main --commit-dirty=true 2>&1 | tee /tmp/dep.log
+          code=${PIPESTATUS[0]}
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ https://exchange-liquidity.pages.dev 로 올렸다" >> $GITHUB_STEP_SUMMARY
+          if [ "$code" = "0" ]; then
+            echo "✅ https://exchange-liquidity.pages.dev 로 올렸다" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **배포 실패 (코드 $code)**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -25 /tmp/dep.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "가장 흔한 원인은 토큰 권한이다 —" >> $GITHUB_STEP_SUMMARY
+            echo "Cloudflare API 토큰에 **Account → Cloudflare Pages → Edit** 이 있어야 한다." >> $GITHUB_STEP_SUMMARY
+          fi
+          exit $code
 
       - name: 토큰이 없어 건너뛴다
         if: env.CF_TOKEN == '' || env.CF_ACCOUNT == ''
