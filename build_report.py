@@ -639,11 +639,20 @@ def _syntax_gate(html):
     파일을 쓰기 전에 여기서 막는다.
     """
     import re
+    import shutil
     import subprocess
     import tempfile
     blocks = re.findall(r'<script>(.*?)</script>', html, re.S)
     if not blocks:
         print('★<script> 블록이 없다'); sys.exit(1)
+
+    # ★node 가 없는 곳(수집 서버 등)에서는 게이트를 건너뛴다.
+    #   게이트는 **사고를 막으려고** 있는 것이지 파이프라인을 멈추려고 있는 게 아니다.
+    #   실제로 여기서 죽어 9시간 동안 리포트가 안 올라갔다.
+    #   대신 조용히 넘어가지 않는다 — 검사 못 했다는 사실을 남긴다.
+    if not shutil.which('node'):
+        print('★구문 게이트 건너뜀 — node 가 없다. 배포 전에 반드시 로컬에서 확인할 것')
+        return
     for i, b in enumerate(blocks):
         f = pathlib.Path(tempfile.gettempdir()) / ('_gate_%d.js' % i)
         f.write_text(b, encoding='utf-8')
