@@ -360,7 +360,7 @@ function drawTrendTable(){
   rows.forEach(r => { h += '<tr><td>' + fmtAt(r.at) + '</td>' + vens.map(v => {
     const c = r.ranks[v] || {};
     return '<td' + (v === TV ? ' class="me"' : '') + '>' +
-           (c.rank ? c.rank + (c.med != null ? '<i>' + shown.toFixed(2) + '</i>' : '') : '—') +
+           (c.rank ? c.rank + (c.med != null ? '<i>' + val(c).toFixed(2) + '</i>' : '') : '—') +
            '</td>'; }).join('') + '</tr>'; });
   document.getElementById('trendTable').innerHTML = h + '</table>';
 }
@@ -544,7 +544,7 @@ function drawDist(){
        + '<div class="whisk" style="left:'+X(c.p10)+'px;width:'+(X(c.p90)-X(c.p10))+'px"></div>'
        + '<div class="box" style="left:'+X(c.p25)+'px;width:'+Math.max(2,X(c.p75)-X(c.p25))+'px"></div>'
        + '<div class="med" style="left:'+X(c.med)+'px"></div></div></td>'
-       + '<td><div class="cell"><span class="v">'+shown.toFixed(2)+'</span></div></td>'
+       + '<td><div class="cell"><span class="v">'+val(c).toFixed(2)+'</span></div></td>'
       + '<td><div class="cell na">—</div></td>'
        + '<td><div class="cell m" style="font-size:11px;opacity:1">'
        + (c.med_buy==null?'—':c.med_buy.toFixed(2))+' / '+(c.med_sell==null?'—':c.med_sell.toFixed(2))
