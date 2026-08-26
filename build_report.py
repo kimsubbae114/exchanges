@@ -92,6 +92,9 @@ td{padding:0;text-align:center;border-bottom:1px solid #172033;white-space:nowra
            outline:1px solid #f87171;outline-offset:-2px}
 .cell.excl .v{color:#fecaca}
 .xtag{display:block;font-size:9px;color:#fca5a5;font-weight:700;margin-top:1px;letter-spacing:.3px}
+/* ★표본이 덜 모인 칸 — 못 채운 것이 아니다. 옅게만 표시한다. */
+.cell.thin{opacity:.55}
+.xtag.thin{color:#7dd3fc;font-weight:400}
 .cell.na{color:#3f4a5f;font-size:11px;padding:13px 8px}
 /* ★호출 자체가 막힌 칸 — '상장 없음'과 전혀 다르다. 눈에 띄게 둔다. */
 .cell.blk{background:#2a1a1a;color:#fca5a5;font-size:10.5px;padding:11px 8px;
@@ -197,7 +200,9 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
   <span><span class="sw" style="background:#7f1d1d"></span>worst</span>
   <span style="color:#334155">|</span>
   <span><span class="sw" style="background-image:repeating-linear-gradient(45deg,#0000 0 5px,#0006 5px 10px);border:1px solid #f87171"></span>
-    hatched <b style="color:#fca5a5">unfilled</b> &mdash; the book could not fill that size, so it is excluded from ranking</span>
+    hatched <b style="color:#fca5a5">unfilled</b> &mdash; the book could not fill that size &middot;
+    faded <b style="color:#7dd3fc">n=…</b> &mdash; too few readings yet (a venue we only started reaching recently);
+    both are left out of the ranking</span>
   <span style="color:#334155">|</span>
   <span style="border-left:3px solid #94a3b8;padding-left:6px">GRVT</span>
   <span style="color:#475569">hover a cell for detail</span>
@@ -245,6 +250,7 @@ Ranking uses only cells that filled the full size (&ge; 95%) with n &ge; 100 obs
 
 <script>
 const D = __DATA__, ORDER = __ORDER__, LABEL = __LABEL__, HIST = __HIST__;
+const MINN = D.meta.min_n || 100;
 
 /* ═══════════ 순위 추이 ═══════════
    색은 둘뿐이다 — 고른 거래소 하나(HL)와 나머지 맥락선(CTX).
@@ -466,6 +472,12 @@ function pairTable(g){
       if(!c || c.med==null){ h += '<td class="'+cls+'"><div class="cell na">n/a</div></td>'; continue; }
       const ex = !c.rankable;
       const shown = val(c);
+      /* ★제외 사유를 구분한다. 둘은 전혀 다른 이야기다.
+           thin   — 아직 표본이 덜 모였다(기다리면 해결된다)
+           unfilled — 그 규모를 실제로 못 채운다(유동성이 없다)
+         섞어서 unfilled 로만 쓰면 "바이낸스가 BTC 10만불을 못 산다"는
+         말이 되어 버린다. 실제로 그렇게 보였다. */
+      const thin = ex && c.fill >= 0.95;
       /* ★detail lives in the tooltip, not on the face of the cell */
       const tip = coin+' · '+(VNAME[v]||v)+' · '+fmtUsd(SZ[ZI])
         + '\nmedian ' + c.med.toFixed(3) + ' bps'
@@ -476,10 +488,11 @@ function pairTable(g){
         + '\nbuy/sell ' + (c.med_buy==null?'—':c.med_buy.toFixed(2)) + ' / ' + (c.med_sell==null?'—':c.med_sell.toFixed(2))
         + '\nfilled ' + (c.fill*100).toFixed(0) + '% of ' + c.n_listed + ' rounds'
         + (ex ? '\n→ excluded from ranking (could not fill the size)' : '');
-      h += '<td class="'+cls+'"><div class="cell '+(ex?'excl':'')+'" title="'+tip.replace(/"/g,'&quot;')+'" '
+      h += '<td class="'+cls+'"><div class="cell '+(thin?'thin':(ex?'excl':''))+'" title="'+tip.replace(/"/g,'&quot;')+'" '
          + 'style="background:'+rankColor(rk[v],n)+'">'
          + '<div class="v">'+c.med.toFixed(c.med<1?2:1)+'<span class="rk"> '+(ex?'':(rk[v]||''))+'</span></div>'
-         + (ex ? '<span class="xtag">unfilled</span>'
+         + (thin ? '<span class="xtag thin">n=' + c.n + '</span>'
+                 : ex ? '<span class="xtag">unfilled</span>'
                : '')
          + '</div></td>';
     }
