@@ -423,12 +423,9 @@ function pairTable(g){
       /* ★detail lives in the tooltip, not on the face of the cell */
       const tip = coin+' · '+(VNAME[v]||v)+' · '+fmtUsd(SZ[ZI])
         + '\nmedian ' + c.med.toFixed(3) + ' bps'
-        + (c.fee!=null ? '
-taker fee ' + c.fee.toFixed(2) + ' bps  ->  with fee ' + (c.med+c.fee).toFixed(3) : '')
-        + (c.spike2!=null ? '
-spikes over median: ' + c.spike2.toFixed(1) + '% >2x, ' + c.spike5.toFixed(1) + '% >5x' : '')
-        + (c.worst!=null ? '
-worst single reading ' + c.worst.toFixed(2) + ' bps (' + c.worst_x + 'x median)' : '')
+        + (c.fee!=null ? '\ntaker fee ' + c.fee.toFixed(2) + ' bps  ->  with fee ' + (c.med+c.fee).toFixed(3) : '')
+        + (c.spike2!=null ? '\nspikes over median: ' + c.spike2.toFixed(1) + '% >2x, ' + c.spike5.toFixed(1) + '% >5x' : '')
+        + (c.worst!=null ? '\nworst single reading ' + c.worst.toFixed(2) + ' bps (' + c.worst_x + 'x median)' : '')
         + '\np10–p90 ' + (c.p10==null?'—':c.p10.toFixed(2)+' – '+c.p90.toFixed(2))
         + '\nbuy/sell ' + (c.med_buy==null?'—':c.med_buy.toFixed(2)) + ' / ' + (c.med_sell==null?'—':c.med_sell.toFixed(2))
         + '\nfilled ' + (c.fill*100).toFixed(0) + '% of ' + c.n_listed + ' rounds'

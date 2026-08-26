@@ -469,12 +469,9 @@ function pairTable(g){
       /* ★detail lives in the tooltip, not on the face of the cell */
       const tip = coin+' · '+(VNAME[v]||v)+' · '+fmtUsd(SZ[ZI])
         + '\nmedian ' + c.med.toFixed(3) + ' bps'
-        + (c.fee!=null ? '
-taker fee ' + c.fee.toFixed(2) + ' bps  ->  with fee ' + (c.med+c.fee).toFixed(3) : '')
-        + (c.spike2!=null ? '
-spikes over median: ' + c.spike2.toFixed(1) + '% >2x, ' + c.spike5.toFixed(1) + '% >5x' : '')
-        + (c.worst!=null ? '
-worst single reading ' + c.worst.toFixed(2) + ' bps (' + c.worst_x + 'x median)' : '')
+        + (c.fee!=null ? '\ntaker fee ' + c.fee.toFixed(2) + ' bps  ->  with fee ' + (c.med+c.fee).toFixed(3) : '')
+        + (c.spike2!=null ? '\nspikes over median: ' + c.spike2.toFixed(1) + '% >2x, ' + c.spike5.toFixed(1) + '% >5x' : '')
+        + (c.worst!=null ? '\nworst single reading ' + c.worst.toFixed(2) + ' bps (' + c.worst_x + 'x median)' : '')
         + '\np10–p90 ' + (c.p10==null?'—':c.p10.toFixed(2)+' – '+c.p90.toFixed(2))
         + '\nbuy/sell ' + (c.med_buy==null?'—':c.med_buy.toFixed(2)) + ' / ' + (c.med_sell==null?'—':c.med_sell.toFixed(2))
         + '\nfilled ' + (c.fill*100).toFixed(0) + '% of ' + c.n_listed + ' rounds'
@@ -620,5 +617,33 @@ HTML = (HTML.replace('__NV__', str(len(M['venues'])))
             .replace('__SITE__', SITE)
             .replace('__MINN__', str(M.get('min_n', 100)))
             .replace('__MAXSHORT__', '%g' % (M.get('max_short', .05) * 100)))
+def _syntax_gate(html):
+    """★<script> 안이 파싱되는지 확인한다.
+
+    브라우저는 스크립트 파싱에 실패하면 **오류를 내지 않고 조용히 통째로 버린다.**
+    그래서 화면이 텅 비는데 콘솔은 깨끗하다. 실제로 두 번 당했다 —
+    한 번은 지도(13MB), 한 번은 이 리포트(따옴표 안의 줄바꿈).
+    파일을 쓰기 전에 여기서 막는다.
+    """
+    import re
+    import subprocess
+    import tempfile
+    blocks = re.findall(r'<script>(.*?)</script>', html, re.S)
+    if not blocks:
+        print('★<script> 블록이 없다'); sys.exit(1)
+    for i, b in enumerate(blocks):
+        f = pathlib.Path(tempfile.gettempdir()) / ('_gate_%d.js' % i)
+        f.write_text(b, encoding='utf-8')
+        r = subprocess.run(['node', '--check', str(f)], capture_output=True,
+                           text=True, encoding='utf-8', errors='replace')
+        if r.returncode:
+            print('★구문 게이트 실패 — 파일을 쓰지 않는다')
+            print((r.stderr or '')[:700])
+            sys.exit(1)
+    print('★구문 게이트 통과 (%d블록 · %.0f KB)'
+          % (len(blocks), sum(len(b) for b in blocks) / 1e3))
+
+
+_syntax_gate(HTML)
 OUT.write_text(HTML, encoding='utf-8')
 print('-> %s (%.2f MB)' % (OUT, OUT.stat().st_size / 1e6))
