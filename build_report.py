@@ -182,7 +182,7 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
   <button id="trTable" class="tbtn">Table view</button>
 </div>
 <div id="trendWrap">
-  <div class="tchart"><div class="tcap">Median slippage <span>(bps; lower is better)</span></div>
+  <div class="tchart"><div class="tcap">Median slippage <span id="slipCap">(bps; lower is better)</span></div>
     <svg id="svgSlip" viewBox="0 0 900 220" preserveAspectRatio="xMidYMid meet"></svg></div>
 </div>
 <div id="trendTable" class="ttable" hidden></div>
@@ -404,7 +404,9 @@ function drawTrendTable(){
   rows.forEach(r => { h += '<tr><td>' + fmtAt(r.at) + '</td>' + vens.map(v => {
     const c = r.ranks[v] || {};
     return '<td' + (v === TV ? ' class="me"' : '') + '>' +
-           (c.rank ? c.rank + (c.med != null ? '<i>' + val(c).toFixed(2) + '</i>' : '') : '—') +
+           (c.rank ? c.rank + (c.med != null ? '<i>'
+             + (c.med + (WITHFEE ? ((D.meta.fees || {})[v] || 0) : 0)).toFixed(2)
+             + '</i>' : '') : '—') +
            '</td>'; }).join('') + '</tr>'; });
   document.getElementById('trendTable').innerHTML = h + '</table>';
 }
@@ -415,7 +417,14 @@ function drawTrends(){
   document.getElementById('trendNone').hidden = !few;
   document.getElementById('trendWrap').hidden = few;
   if (few) return;
-  drawTrend('svgSlip', (r, v) => (r.ranks[v] || {}).med, false, ' bps');
+  const F = D.meta.fees || {};
+  drawTrend('svgSlip', (r, v) => {
+    const m = (r.ranks[v] || {}).med;
+    return m == null ? null : m + (WITHFEE ? (F[v] || 0) : 0);
+  }, false, ' bps');
+  const cap = document.getElementById('slipCap');
+  if (cap) cap.textContent = '(bps; lower is better' +
+    (WITHFEE ? '; taker fee included)' : '; slippage only)');
   if (TTable) drawTrendTable();
 }
 
@@ -583,7 +592,9 @@ function drawDist(){
   const t = (COIN==='__ALL__') ? D.scope[DG]['all'].table : (D.by_coin[DG][COIN]||{});
   const s = String(SZ[ZI]), rows = venueOrder(DG, s);
   let lo=Infinity, hi=-Infinity;
-  rows.forEach(v=>{ const c=t[v]&&t[v][s]; if(c&&c.p10!=null){ lo=Math.min(lo,c.p10); hi=Math.max(hi,c.p90);} });
+  // ★축 범위도 수수료를 반영해야 한다. 값만 밀고 축이 그대로면 막대가 칸 밖으로 나간다.
+  rows.forEach(v=>{ const c=t[v]&&t[v][s];
+    if(c&&c.p10!=null){ const f=FEE(c); lo=Math.min(lo,c.p10+f); hi=Math.max(hi,c.p90+f);} });
   if(!isFinite(lo)){ lo=0; hi=1; }
   const W=320, X = x => ((x-lo)/(hi-lo||1))*W;
   let h = '<thead><tr><th style="text-align:left;position:sticky;left:0;background:#0f172a">Venue</th>'
@@ -842,7 +853,7 @@ mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
       function(k){ DG = k; refreshCoinSel(); drawDist(); });
 mkSeg('segFee', [['1','slippage + fee'], ['0','slippage only']], WITHFEE ? '1' : '0',
-      function(k){ WITHFEE = (k === '1'); drawFeeNote(); drawAll(); });
+      function(k){ WITHFEE = (k === '1'); drawFeeNote(); drawAll(); drawTrends(); });
 mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
         .concat(SZ.map(z => [String(z), fmtUsd(z)])), SPK,
       function(k){ SPK = k; drawSpikes(); });
