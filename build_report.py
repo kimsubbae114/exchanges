@@ -156,12 +156,6 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 
 <div id="verdict" class="verdict"></div>
 
-<div class="ctrl" style="margin-top:12px">
-  <b>COST</b>
-  <div class="seg" id="segFee"></div>
-  <span class="badge" id="feeNote"></span>
-</div>
-<div class="note" id="feeTable" style="margin-top:6px;display:none"></div>
 
 <!-- ─────────── 순위 추이 ───────────
      ★차트를 둘로 나눈 이유
@@ -185,6 +179,11 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 
 <div class="ctrl">
   <span><b>ORDER SIZE</b><span class="seg" id="segZ"></span></span>
+  <span><b>COST</b><span class="seg" id="segFee"></span></span>
+  <span class="badge" id="feeNote"></span>
+</div>
+<div class="note" id="feeTable" style="margin-top:6px;display:none"></div>
+<div class="ctrl" style="margin-top:6px">
   <span class="badge">Columns sorted <b>best &rarr; worst</b> for the selected size &middot;
     rows by market cap &middot; cell colour = rank <b>within that pair</b></span>
 </div>
