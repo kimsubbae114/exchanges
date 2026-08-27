@@ -248,6 +248,55 @@ else:
     res['spike'] = None
 
 
+# ── 스파이크 시계열 ─────────────────────────────────────────────────────────
+# ★"저 거래소는 자주 솟구치는구나"를 눈으로 보게 하는 판.
+#   요약 숫자는 사건을 지워 버린다. 언제 얼마나 튀었는지는 시간축에서만 보인다.
+#
+#   종목·사이즈마다 절대 수준이 달라 그대로 겹치면 BTC 선이 바닥에 눌린다.
+#   그래서 한 번에 **한 조합(종목×사이즈)** 만 그린다. 화면에서 고를 수 있게
+#   조합별로 담되, 용량을 위해 대표 조합만 낸다.
+SERIES_MAX = 400          # 한 선에 담는 점의 수 — 넘으면 최근 것만 남긴다
+
+ts = main[main.ok].copy()
+res['series'] = {}
+if len(ts):
+    ts['_t'] = pd.to_datetime(ts.ts, errors='coerce')
+    # 라운드를 시간순으로 세운다
+    order = ts.groupby('round')._t.min().sort_values()
+    idx = {r: i for i, r in enumerate(order.index)}
+    ts['_i'] = ts['round'].map(idx)
+
+    def series_for(coin, size):
+        d0 = ts[(ts.coin == coin) & (ts.usd_size == size)]
+        if len(d0) < 20:
+            return None
+        # 라운드마다 buy/sell 중위 하나로 — 방향까지 겹치면 선이 두 배가 된다
+        piv = d0.groupby(['_i', 'venue']).slippage_bps.median().unstack()
+        piv = piv.tail(SERIES_MAX)
+        stamps = order.iloc[piv.index].dt.strftime('%m-%d %H:%M').tolist()
+        out = {'t': stamps, 'v': {}}
+        for v in piv.columns:
+            col = piv[v]
+            if col.notna().sum() < 10:
+                continue
+            out['v'][v] = [None if pd.isna(x) else round(float(x), 3) for x in col]
+        return out if out['v'] else None
+
+    # 대표 조합 — 그룹마다 가장 많이 상장된 종목 몇 개 × 사이즈 전체
+    picks = []
+    for g in ('MAJOR', 'RWA'):
+        d0 = main[(main.group == g) & (~main.nobook)]
+        cnt = d0.groupby('coin').venue.nunique().sort_values(ascending=False)
+        picks += [(g, c) for c in cnt.head(2).index]
+    for g, coin in picks:
+        for z in [z for z in SIZES if z in (10000, 100000, 1000000)]:
+            k = '%s|%d' % (coin, z)
+            blk = series_for(coin, z)
+            if blk:
+                res['series'][k] = blk
+    print('★시계열 %d조합 · 한 선당 최대 %d점' % (len(res['series']), SERIES_MAX))
+
+
 # ── 책 깊이 ─────────────────────────────────────────────────────────────────
 bk = main[main.book_usd_bid.notna()].groupby(['group', 'venue'])[
     ['book_usd_bid', 'book_usd_ask']].median()

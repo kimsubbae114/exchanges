@@ -137,6 +137,13 @@ td{padding:0;text-align:center;border-bottom:1px solid #172033;white-space:nowra
            gap:12px;align-items:start;margin:6px 0}
 @media(max-width:1100px){.spikeGrid{grid-template-columns:1fr}}
 .spikeGrid .tw{max-height:none}
+.tsel{background:#111c31;color:#e2e8f0;border:1px solid #24344d;border-radius:6px;
+      padding:5px 9px;font-size:12px;font-family:inherit}
+.spkleg{display:flex;gap:9px;flex-wrap:wrap;font-size:10.5px;color:#64748b;margin-top:6px}
+.spkleg b{font-weight:600}
+.spkleg .lg{cursor:pointer;opacity:.4;padding:1px 4px;border-radius:4px;user-select:none}
+.spkleg .lg:hover{background:#16233a}
+.spkleg .lg.on{opacity:1;color:#cbd5e1}
 .ttable{overflow-x:auto;margin:8px 0}
 .ttable table{border-collapse:collapse;font-size:11.5px;width:100%}
 .ttable th{background:#111c31;color:#94a3b8;padding:5px 9px;text-align:center;
@@ -218,9 +225,17 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
     BTC look calm and ADA look wild no matter what. <b>Lower is better.</b></span>
 </div>
 <div class="spikeGrid">
-  <div class="tchart"><div class="tcap">How often &times; how much worse
-    <span>&mdash; bps over that venue's own normal. Bottom-left is calm</span></div>
-    <svg id="svgSpike" viewBox="0 0 620 400" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div class="tchart">
+    <div class="tcap">Slippage over time <span id="spkCap"></span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
+      <select id="spkPair" class="tsel"></select>
+      <span class="badge" style="align-self:center">every line is one venue &middot;
+        <b>tall spikes = it blows out</b> &middot; log scale, so a spike twice as tall
+        is roughly ten times worse</span>
+    </div>
+    <svg id="svgSpike" viewBox="0 0 660 330" preserveAspectRatio="xMidYMid meet"></svg>
+    <div id="spkLeg" class="spkleg"></div>
+  </div>
   <div id="spikeWrap"></div>
 </div>
 <div class="note">
@@ -642,62 +657,116 @@ function spikeRows(){
   return VEN.filter(v => src[v]).map(v => [v, src[v]]).sort((a, b) => a[1].e2 - b[1].e2);
 }
 
-/* ★산점도 — 가로는 "얼마나 자주", 세로는 "얼마나 크게".
-   막대 두 개로 나눠 그리면 둘의 조합이 안 보인다. 자주 조금 튀는 곳과
-   드물게 크게 튀는 곳은 전혀 다른 문제인데, 한 축씩 보면 구분이 안 된다. */
+/* ★시계열 — "저 거래소는 자주 솟구치는구나"를 눈으로 보게 한다.
+   요약 숫자는 사건을 지운다. 언제 얼마나 튀었는지는 시간축에서만 보인다.
+   종목·사이즈마다 절대 수준이 달라 한 번에 한 조합만 그린다. */
+let SPKKEY = null;
+
+function spkKeys(){ return Object.keys(D.series || {}); }
+
 function drawSpikeChart(){
-  const rows = spikeRows(), svg = document.getElementById('svgSpike');
+  const S = D.series || {}, svg = document.getElementById('svgSpike');
   if (!svg) return;
-  if (!rows.length){ svg.innerHTML = ''; return; }
-  const W = 620, H = 400, L = 52, R = 118, T = 18, B = 42;
-  const xs = rows.map(r => r[1].e2), ys = rows.map(r => r[1].ex99);
-  const xMax = Math.max(...xs) * 1.15 || 1;
-  /* ★세로는 로그 눈금이다. p99 가 2.6배부터 47배까지 벌어져 있어
-     선형으로 그리면 아래쪽 거래소들이 한 점에 뭉친다. */
-  const yMin = 1, yMax = Math.max(...ys) * 1.4 || 10;
-  const X = v => L + (v / xMax) * (W - L - R);
-  const Y = v => H - B - (Math.log(Math.max(v, yMin)) / Math.log(yMax)) * (H - T - B);
+  const keys = spkKeys();
+  if (!keys.length){ svg.innerHTML = ''; return; }
+  if (!SPKKEY || !S[SPKKEY]) SPKKEY = keys.find(k => k.startsWith('BTC|100000')) || keys[0];
+  const blk = S[SPKKEY], vens = Object.keys(blk.v);
+  const W = 660, H = 330, L = 46, R = 14, T = 12, B = 34;
+
+  /* ★세로는 로그다. 스파이크가 평소의 수십 배라 선형으로 그리면
+     평소 구간이 바닥에 눌려 붙어 아무것도 안 보인다. */
+  let hi = 0, lo = Infinity;
+  for (const v of vens) for (const y of blk.v[v]) {
+    if (y == null) continue; if (y > hi) hi = y; if (y > 0 && y < lo) lo = y;
+  }
+  if (!isFinite(lo) || lo <= 0) lo = 0.01;
+  hi = Math.max(hi, lo * 10);
+  const n = blk.t.length;
+  const X = i => L + (n < 2 ? 0 : (i / (n - 1)) * (W - L - R));
+  const Y = y => {
+    const c = Math.max(y == null ? lo : y, lo);
+    return H - B - (Math.log(c / lo) / Math.log(hi / lo)) * (H - T - B);
+  };
 
   let g = '';
-  // 눈금
-  for (let i = 0; i <= 4; i++){
-    const xv = xMax * i / 4, x = X(xv);
-    g += '<line x1="' + x + '" y1="' + T + '" x2="' + x + '" y2="' + (H - B)
-       + '" stroke="#172033" stroke-width="1"/>'
-       + '<text x="' + x + '" y="' + (H - B + 15) + '" fill="#475569" font-size="10"'
-       + ' text-anchor="middle">' + xv.toFixed(1) + '%</text>';
-  }
-  for (const yv of [2, 5, 10, 25, 50, 100, 250]){
-    if (yv > yMax) continue;
+  // 가로 눈금 — 사람이 아는 값에 맞춘다
+  for (const yv of [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500]){
+    if (yv < lo || yv > hi) continue;
     const y = Y(yv);
     g += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y
        + '" stroke="#172033" stroke-width="1"/>'
-       + '<text x="' + (L - 7) + '" y="' + (y + 3) + '" fill="#475569" font-size="10"'
+       + '<text x="' + (L - 6) + '" y="' + (y + 3) + '" fill="#475569" font-size="9.5"'
        + ' text-anchor="end">' + yv + '</text>';
   }
-  g += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 6) + '" fill="#64748b" font-size="10.5"'
-     + ' text-anchor="middle">how often it costs 2 bps more than normal (%)</text>'
-     + '<text x="13" y="' + ((T + H - B) / 2) + '" fill="#64748b" font-size="10.5"'
-     + ' text-anchor="middle" transform="rotate(-90 13 ' + ((T + H - B) / 2) + ')">'
-     + 'how much worse, worst 1% (bps over normal)</text>';
+  // 시간 눈금
+  for (let k = 0; k <= 3; k++){
+    const i = Math.round((n - 1) * k / 3), x = X(i);
+    g += '<text x="' + x + '" y="' + (H - B + 14) + '" fill="#475569" font-size="9.5"'
+       + ' text-anchor="' + (k === 0 ? 'start' : k === 3 ? 'end' : 'middle') + '">'
+       + (blk.t[i] || '') + '</text>';
+  }
+  g += '<text x="12" y="' + ((T + H - B) / 2) + '" fill="#64748b" font-size="10"'
+     + ' text-anchor="middle" transform="rotate(-90 12 ' + ((T + H - B) / 2) + ')">bps</text>';
 
-  // 점 — 겹치는 이름은 위아래로 흩어 놓는다
-  const placed = [];
-  for (const [v, b] of rows){
-    const me = v === 'grvt', x = X(b.e2), y = Y(b.ex99);
-    let ly = y + 3;
-    while (placed.some(q => Math.abs(q - ly) < 11)) ly += 11;
-    placed.push(ly);
-    g += '<circle cx="' + x + '" cy="' + y + '" r="' + (me ? 6.5 : 4.5) + '" fill="'
-       + (me ? '#38bdf8' : '#64748b') + '" ' + (me ? 'stroke="#0ea5e9" stroke-width="2"' : '') + '>'
-       + '<title>' + (VNAME[v] || v) + ' — pays 2 bps over normal ' + b.e2.toFixed(2) + '% of the time; '
-       + 'the worst 1% pay ' + b.ex99.toFixed(1) + ' bps over normal (worst ever '
-       + b.exmax.toFixed(0) + ')</title></circle>'
-       + '<text x="' + (x + 9) + '" y="' + ly + '" fill="' + (me ? '#7dd3fc' : '#94a3b8')
-       + '" font-size="' + (me ? 11.5 : 10.5) + '"' + (me ? ' font-weight="700"' : '') + '>'
-       + (VNAME[v] || v) + '</text>';
+  /* ★GRVT 를 맨 위에 그린다. 겹칠 때 우리 선이 묻히면 볼 이유가 없다. */
+  if (!SPKON) SPKON = spkDefaults();
+  /* 켠 선을 나중에 그려 위로 올린다. GRVT 는 맨 마지막 — 묻히면 볼 이유가 없다. */
+  const order = vens.slice().sort((a, b) =>
+    (SPKON.has(a) - SPKON.has(b)) || ((a === 'grvt') - (b === 'grvt')));
+  for (const v of order){
+    const on = SPKON.has(v), me = v === 'grvt';
+    let d = '', pen = false;
+    blk.v[v].forEach((y, i) => {
+      if (y == null){ pen = false; return; }
+      d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(y).toFixed(1) + ' ';
+      pen = true;
+    });
+    g += '<path d="' + d + '" fill="none" stroke="' + (me ? '#38bdf8' : VCOL(v))
+       + '" stroke-width="' + (on ? (me ? 2.1 : 1.35) : .7) + '"'
+       + ' opacity="' + (on ? (me ? 1 : .85) : .13) + '"'
+       + ' stroke-linejoin="round"><title>' + (VNAME[v] || v) + '</title></path>';
   }
   svg.innerHTML = g;
+
+  document.getElementById('spkCap').textContent =
+    '— ' + SPKKEY.split('|')[0] + ' @ ' + fmtUsd(+SPKKEY.split('|')[1])
+    + ' · ' + n + ' readings · log scale';
+  document.getElementById('spkLeg').innerHTML =
+    '<span style="color:#475569;margin-right:2px">click to show/hide:</span>'
+    + vens.slice().sort((a, b) => VEN.indexOf(a) - VEN.indexOf(b)).map(v =>
+      '<span class="lg' + (SPKON.has(v) ? ' on' : '') + '" data-v="' + v + '">'
+      + '<b style="color:' + (v === 'grvt' ? '#38bdf8' : VCOL(v)) + '">&#9632;</b> '
+      + (VNAME[v] || v) + '</span>').join('');
+  for (const el of document.querySelectorAll('#spkLeg .lg')){
+    el.onclick = function(){
+      const v = el.dataset.v;
+      if (SPKON.has(v)) SPKON.delete(v); else SPKON.add(v);
+      drawSpikeChart();
+    };
+  }
+}
+
+/* ★어느 선을 볼지 고른다. 10개를 한꺼번에 겹치면 아무것도 안 보인다 —
+   기본은 GRVT + 튐이 가장 심한 곳 + 가장 조용한 곳. 비교가 목적이니까. */
+let SPKON = null;
+
+function spkDefaults(){
+  const rows = spikeRows();               // 초과분 빈도 오름차순
+  const pick = new Set(['grvt']);
+  if (rows.length){
+    pick.add(rows[0][0]);                 // 가장 조용한 곳
+    pick.add(rows[rows.length - 1][0]);   // 가장 심한 곳
+    const hl = rows.find(r => r[0] === 'hyperliquid');
+    if (hl) pick.add('hyperliquid');      // 늘 비교하는 상대
+  }
+  return pick;
+}
+
+/* 거래소마다 고정 색 — 조합을 바꿔도 같은 거래소가 같은 색이어야 눈이 따라간다 */
+function VCOL(v){
+  const P = ['#94a3b8','#a78bfa','#f472b6','#fbbf24','#34d399','#60a5fa',
+             '#fb923c','#22d3ee','#c084fc','#4ade80'];
+  return P[VEN.indexOf(v) % P.length];
 }
 
 function drawSpikes(){
@@ -748,6 +817,14 @@ mkSeg('segFee', [['1','slippage + fee'], ['0','slippage only']], WITHFEE ? '1' :
 mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
         .concat(SZ.map(z => [String(z), fmtUsd(z)])), SPK,
       function(k){ SPK = k; drawSpikes(); });
+(function(){
+  const sel = document.getElementById('spkPair'); if (!sel) return;
+  const keys = spkKeys();
+  sel.innerHTML = keys.map(k => '<option value="' + k + '">' + k.split('|')[0]
+      + ' · ' + fmtUsd(+k.split('|')[1]) + '</option>').join('');
+  sel.onchange = function(){ SPKKEY = sel.value; drawSpikeChart(); };
+  if (keys.length) { SPKKEY = keys.find(k => k.startsWith('BTC|100000')) || keys[0]; sel.value = SPKKEY; }
+})();
 
 /* ★어떤 수수료를 더했는지 보여 준다. 숫자만 바뀌고 근거가 없으면 믿을 수 없다. */
 function drawFeeNote(){
