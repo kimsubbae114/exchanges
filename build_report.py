@@ -132,6 +132,11 @@ td{padding:0;text-align:center;border-bottom:1px solid #172033;white-space:nowra
 .tcap{font-size:11.5px;color:#94a3b8;margin-bottom:2px}
 .tcap span{color:#64748b;font-size:10.5px}
 .tchart svg{width:100%;height:auto;display:block}
+/* 스파이크 — 그림이 먼저, 숫자는 옆에서 받쳐 준다 */
+.spikeGrid{display:grid;grid-template-columns:minmax(380px,1fr) minmax(420px,1.05fr);
+           gap:12px;align-items:start;margin:6px 0}
+@media(max-width:1100px){.spikeGrid{grid-template-columns:1fr}}
+.spikeGrid .tw{max-height:none}
 .ttable{overflow-x:auto;margin:8px 0}
 .ttable table{border-collapse:collapse;font-size:11.5px;width:100%}
 .ttable th{background:#111c31;color:#94a3b8;padding:5px 9px;text-align:center;
@@ -212,7 +217,12 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
   <span class="badge">Baseline is that cell's own median &mdash; comparing raw bps would make
     BTC look calm and ADA look wild no matter what. <b>Lower is better.</b></span>
 </div>
-<div id="spikeWrap"></div>
+<div class="spikeGrid">
+  <div class="tchart"><div class="tcap">How often &times; how hard
+    <span>&mdash; bottom-left is calm, top-right blows out</span></div>
+    <svg id="svgSpike" viewBox="0 0 620 400" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div id="spikeWrap"></div>
+</div>
 <div class="note">
   <b>How to read this.</b> <b>2&times;/5&times;</b> is <b>how often</b> a reading came in at
   twice or five times that cell's normal level. <b>p99</b> is <b>how bad</b> the worst 1% got &mdash;
@@ -631,7 +641,65 @@ function spikeRows(){
   return VEN.filter(v => src[v]).map(v => [v, src[v]]).sort((a, b) => a[1].f2 - b[1].f2);
 }
 
+/* ★산점도 — 가로는 "얼마나 자주", 세로는 "얼마나 크게".
+   막대 두 개로 나눠 그리면 둘의 조합이 안 보인다. 자주 조금 튀는 곳과
+   드물게 크게 튀는 곳은 전혀 다른 문제인데, 한 축씩 보면 구분이 안 된다. */
+function drawSpikeChart(){
+  const rows = spikeRows(), svg = document.getElementById('svgSpike');
+  if (!svg) return;
+  if (!rows.length){ svg.innerHTML = ''; return; }
+  const W = 620, H = 400, L = 52, R = 118, T = 18, B = 42;
+  const xs = rows.map(r => r[1].f2), ys = rows.map(r => r[1].p99x);
+  const xMax = Math.max(...xs) * 1.15 || 1;
+  /* ★세로는 로그 눈금이다. p99 가 2.6배부터 47배까지 벌어져 있어
+     선형으로 그리면 아래쪽 거래소들이 한 점에 뭉친다. */
+  const yMin = 1, yMax = Math.max(...ys) * 1.3 || 10;
+  const X = v => L + (v / xMax) * (W - L - R);
+  const Y = v => H - B - (Math.log(Math.max(v, yMin)) / Math.log(yMax)) * (H - T - B);
+
+  let g = '';
+  // 눈금
+  for (let i = 0; i <= 4; i++){
+    const xv = xMax * i / 4, x = X(xv);
+    g += '<line x1="' + x + '" y1="' + T + '" x2="' + x + '" y2="' + (H - B)
+       + '" stroke="#172033" stroke-width="1"/>'
+       + '<text x="' + x + '" y="' + (H - B + 15) + '" fill="#475569" font-size="10"'
+       + ' text-anchor="middle">' + xv.toFixed(1) + '%</text>';
+  }
+  for (const yv of [2, 5, 10, 25, 50, 100]){
+    if (yv > yMax) continue;
+    const y = Y(yv);
+    g += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y
+       + '" stroke="#172033" stroke-width="1"/>'
+       + '<text x="' + (L - 7) + '" y="' + (y + 3) + '" fill="#475569" font-size="10"'
+       + ' text-anchor="end">' + yv + '&times;</text>';
+  }
+  g += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 6) + '" fill="#64748b" font-size="10.5"'
+     + ' text-anchor="middle">how often it doubles (% of readings)</text>'
+     + '<text x="13" y="' + ((T + H - B) / 2) + '" fill="#64748b" font-size="10.5"'
+     + ' text-anchor="middle" transform="rotate(-90 13 ' + ((T + H - B) / 2) + ')">'
+     + 'how hard, worst 1% (&times; normal)</text>';
+
+  // 점 — 겹치는 이름은 위아래로 흩어 놓는다
+  const placed = [];
+  for (const [v, b] of rows){
+    const me = v === 'grvt', x = X(b.f2), y = Y(b.p99x);
+    let ly = y + 3;
+    while (placed.some(q => Math.abs(q - ly) < 11)) ly += 11;
+    placed.push(ly);
+    g += '<circle cx="' + x + '" cy="' + y + '" r="' + (me ? 6.5 : 4.5) + '" fill="'
+       + (me ? '#38bdf8' : '#64748b') + '" ' + (me ? 'stroke="#0ea5e9" stroke-width="2"' : '') + '>'
+       + '<title>' + (VNAME[v] || v) + ' — doubles ' + b.f2.toFixed(2) + '% of the time; '
+       + 'worst 1% is ' + b.p99x.toFixed(1) + 'x normal (' + b.p99bps.toFixed(1) + ' bps)</title></circle>'
+       + '<text x="' + (x + 9) + '" y="' + ly + '" fill="' + (me ? '#7dd3fc' : '#94a3b8')
+       + '" font-size="' + (me ? 11.5 : 10.5) + '"' + (me ? ' font-weight="700"' : '') + '>'
+       + (VNAME[v] || v) + '</text>';
+  }
+  svg.innerHTML = g;
+}
+
 function drawSpikes(){
+  drawSpikeChart();
   const rows = spikeRows(), box = document.getElementById('spikeWrap');
   if (!rows.length){ box.innerHTML = '<div class="note">not enough readings yet</div>'; return; }
   const maxF = Math.max(...rows.map(r => r[1].f2), 1);
