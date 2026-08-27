@@ -176,8 +176,6 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
   <button id="trTable" class="tbtn">Table view</button>
 </div>
 <div id="trendWrap">
-  <div class="tchart"><div class="tcap">Rank <span>(1 = best; lower is better)</span></div>
-    <svg id="svgRank" viewBox="0 0 900 260" preserveAspectRatio="xMidYMid meet"></svg></div>
   <div class="tchart"><div class="tcap">Median slippage <span>(bps; lower is better)</span></div>
     <svg id="svgSlip" viewBox="0 0 900 220" preserveAspectRatio="xMidYMid meet"></svg></div>
 </div>
@@ -271,7 +269,7 @@ function drawTrend(svgId, pick, invert, unit){
   const rows = hRows().sort((a, b) => a.at < b.at ? -1 : 1);
   svg.innerHTML = '';
   if (rows.length < 2) return;
-  const W = 900, H = svgId === 'svgRank' ? 260 : 220;
+  const W = 900, H = 260;
   const L = 44, R = 96, T = 14, B = 26;               // 오른쪽은 이름표 자리
   const xs = rows.map(r => r.at);
   const vens = hVenues();
@@ -376,7 +374,6 @@ function drawTrends(){
   document.getElementById('trendNone').hidden = !few;
   document.getElementById('trendWrap').hidden = few;
   if (few) return;
-  drawTrend('svgRank', (r, v) => (r.ranks[v] || {}).rank, true, '');
   drawTrend('svgSlip', (r, v) => (r.ranks[v] || {}).med, false, ' bps');
   if (TTable) drawTrendTable();
 }
