@@ -26,7 +26,30 @@ RECENT = ROOT / 'data' / 'recent'
 OUT = ROOT / 'data' / 'agg_latest.json'
 MIN_N = 100          # ★이보다 표본이 적으면 순위에서 뺀다
 MAX_SHORT = 0.05     # ★못 채운 비율이 이보다 크면 순위에서 뺀다
-WINDOW_H = 24        # 최근 이만큼만 본다
+WINDOW_H = 12        # ★최근 이만큼만 본다 — 24시간이었는데 줄였다(2026-08-27)
+
+# ★메모리 — 1GB 서버에서 이 스크립트가 서버를 통째로 멈춰 세웠다(실제로 겪었다).
+#
+#   원인은 창 크기가 아니라 **데이터 표현**이었다. 문자열 열(ts·venue·group…)이
+#   행마다 파이썬 객체로 저장돼 297,000행에 192MB 를 먹었다. 값 종류는 10~20개뿐인데
+#   문자열을 29만 번 들고 있던 셈이다. category·float32 로 바꾸면 12MB — **94% 절감**.
+#
+#   그 위에 창을 12시간으로 줄여 안전 마진을 둔다. 계산상 24시간도 되지만,
+#   한 번 죽으면 사람이 콘솔에서 재부팅해야 복구된다 — 그 비용이 크다.
+#   나중에 시간별 부분집계를 넣으면 24시간으로 되돌릴 수 있다.
+CAT_COLS = ['venue', 'coin', 'group', 'side', 'status', 'symbol', 'quote_ccy', 'hour']
+
+
+def shrink(df):
+    """메모리를 줄인다. 값이 그대로인지는 아래 집계가 그대로 도는 것으로 확인된다."""
+    for c in df.columns:
+        if c in CAT_COLS and df[c].dtype == object:
+            df[c] = df[c].astype('category')
+        elif df[c].dtype == 'float64':
+            df[c] = df[c].astype('float32')
+        elif df[c].dtype == 'int64':
+            df[c] = pd.to_numeric(df[c], downcast='integer')
+    return df
 
 # ★최근 24시간 원시를 전부 읽어 하나로 본다. 시간별 파일이 나뉘어 있을 뿐
 #   판단 단위는 "최근 24시간" 하나다.
@@ -41,8 +64,13 @@ for i, f in enumerate(files):
     p = pd.read_csv(f, low_memory=False)
     # 파일마다 round 가 1부터 다시 시작한다 → 겹치지 않게 밀어 준다
     p['round'] = p['round'] + i * 100000
-    parts.append(p)
+    # ★합치기 **전에** 줄인다. 합친 뒤 줄이면 이미 최고점을 찍은 뒤라 늦다.
+    parts.append(shrink(p))
 df = pd.concat(parts, ignore_index=True)
+del parts
+df = shrink(df)
+print('   메모리 %.0f MB (%s행)'
+      % (df.memory_usage(deep=True).sum() / 1e6, '{:,}'.format(len(df))))
 
 # ★24시간을 넘는 관측은 잘라낸다. 파일 단위로만 지우면 경계가 흐려진다.
 df['_t'] = pd.to_datetime(df.ts, errors='coerce')
@@ -103,7 +131,7 @@ def cell(d):
         out.update({'p10': round(float(q[.1]), 3), 'p25': round(float(q[.25]), 3),
                     'med': round(float(q[.5]), 3), 'p75': round(float(q[.75]), 3),
                     'p90': round(float(q[.9]), 3)})
-        pr = okd.groupby('round').slippage_bps.median()
+        pr = okd.groupby('round', observed=True).slippage_bps.median()
         out['sd'] = round(float(pr.std()), 3) if len(pr) > 2 else None
 
         # ★수수료 — **원시에 박힌 값이 아니라 지금 값을 쓴다.**
@@ -152,7 +180,7 @@ res = {'meta': {
 }}
 
 # 라운드 사이 실제 간격을 재서 적는다. "5분마다"라고 적어 놓고 실제로 다르면 거짓말이 된다.
-_t = pd.to_datetime(df.groupby('round').ts.min(), errors='coerce').sort_values()
+_t = pd.to_datetime(df.groupby('round', observed=True).ts.min(), errors='coerce').sort_values()
 if len(_t) > 2:
     _gap = _t.diff().dt.total_seconds().dropna()
     _gap = _gap[(_gap > 0) & (_gap < 3600)]
@@ -160,7 +188,7 @@ if len(_t) > 2:
         res['meta']['interval_sec'] = int(round(float(_gap.median())))
 
 # ── 상장 여부 ────────────────────────────────────────────────────────────────
-cov = main[~main.nobook].groupby(['group', 'coin', 'venue']).size().unstack(fill_value=0)
+cov = main[~main.nobook].groupby(['group', 'coin', 'venue'], observed=True).size().unstack(fill_value=0)
 res['coverage'] = {}
 for (g, coin), row in cov.iterrows():
     res['coverage'].setdefault(g, {})[coin] = {v: bool(row.get(v, 0) > 0) for v in VENUES}
@@ -169,7 +197,7 @@ for (g, coin), row in cov.iterrows():
 res['scope'] = {}
 for g in ('MAJOR', 'RWA'):
     d0 = main[main.group == g]
-    listed = d0[~d0.nobook].groupby(['coin', 'venue']).size().unstack(fill_value=0)
+    listed = d0[~d0.nobook].groupby(['coin', 'venue'], observed=True).size().unstack(fill_value=0)
     common = sorted([c for c in listed.index if (listed.loc[c] > 0).all()])
     res['scope'][g] = {
         'all': {'coins': sorted(d0.coin.unique()), 'table': table(d0)},
@@ -198,7 +226,7 @@ for g in ('MAJOR', 'RWA'):
 
 sp = main[main.ok].copy()
 if len(sp):
-    base = sp.groupby(['venue', 'coin', 'usd_size']).slippage_bps.transform('median')
+    base = sp.groupby(['venue', 'coin', 'usd_size'], observed=True).slippage_bps.transform('median')
     sp['base'] = base
     sp['x'] = sp.slippage_bps / sp.base.replace(0, float('nan'))
     # ★★기준선을 0 으로 맞추고 **초과분(bps)** 을 본다 — 이것이 주 지표다.
@@ -233,11 +261,11 @@ if len(sp):
         return out
 
     res['spike'] = {'by_venue': {}, 'by_group': {}, 'by_size': {}}
-    for v, d0 in sp.groupby('venue'):
+    for v, d0 in sp.groupby('venue', observed=True):
         res['spike']['by_venue'][v] = spike_block(d0)
-    for (v, g), d0 in sp.groupby(['venue', 'group']):
+    for (v, g), d0 in sp.groupby(['venue', 'group'], observed=True):
         res['spike']['by_group'].setdefault(g, {})[v] = spike_block(d0)
-    for (v, z), d0 in sp.groupby(['venue', 'usd_size']):
+    for (v, z), d0 in sp.groupby(['venue', 'usd_size'], observed=True):
         res['spike']['by_size'].setdefault(str(int(z)), {})[v] = spike_block(d0)
 
     print('★스파이크 — 기준선 대비 2bps 넘게 더 문 비율(%) 낮은 순')
@@ -262,7 +290,7 @@ res['series'] = {}
 if len(ts):
     ts['_t'] = pd.to_datetime(ts.ts, errors='coerce')
     # 라운드를 시간순으로 세운다
-    order = ts.groupby('round')._t.min().sort_values()
+    order = ts.groupby('round', observed=True)._t.min().sort_values()
     idx = {r: i for i, r in enumerate(order.index)}
     ts['_i'] = ts['round'].map(idx)
 
@@ -271,7 +299,7 @@ if len(ts):
         if len(d0) < 20:
             return None
         # 라운드마다 buy/sell 중위 하나로 — 방향까지 겹치면 선이 두 배가 된다
-        piv = d0.groupby(['_i', 'venue']).slippage_bps.median().unstack()
+        piv = d0.groupby(['_i', 'venue'], observed=True).slippage_bps.median().unstack()
         piv = piv.tail(SERIES_MAX)
         stamps = order.iloc[piv.index].dt.strftime('%m-%d %H:%M').tolist()
         out = {'t': stamps, 'v': {}}
@@ -298,7 +326,7 @@ if len(ts):
 
 
 # ── 책 깊이 ─────────────────────────────────────────────────────────────────
-bk = main[main.book_usd_bid.notna()].groupby(['group', 'venue'])[
+bk = main[main.book_usd_bid.notna()].groupby(['group', 'venue'], observed=True)[
     ['book_usd_bid', 'book_usd_ask']].median()
 res['book'] = {}
 for (g, v), row in bk.iterrows():
