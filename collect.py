@@ -28,8 +28,8 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = pathlib.Path(__file__).resolve().parent
 RECENT = ROOT / 'data' / 'recent'
 KEEP_HOURS = 24                  # 이만큼만 원시를 남긴다
-DEFAULT_ROUNDS = 12              # 매시간 12라운드
-DEFAULT_GAP = 300                # 5분 간격
+DEFAULT_ROUNDS = 12
+DEFAULT_GAP = 60                 # ★1분 간격 (2026-08-27) — 스파이크를 잡으려면 조밀해야 한다
 
 
 def sweep_old():
