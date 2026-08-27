@@ -30,6 +30,7 @@ RECENT = ROOT / 'data' / 'recent'
 KEEP_HOURS = 24                  # 이만큼만 원시를 남긴다
 DEFAULT_ROUNDS = 12
 DEFAULT_GAP = 60                 # ★1분 간격 (2026-08-27) — 스파이크를 잡으려면 조밀해야 한다
+ROUND_SEC = 30                   # 한 라운드에 걸리는 시간(실측 20초) + 여유
 
 
 def sweep_old():
@@ -70,8 +71,11 @@ def main():
     t0 = time.time()
     frames = []
     for r in range(1, a.rounds + 1):
+        # ★한 라운드에 실제로 걸리는 시간(pace 0.5 기준 20초)에 여유를 더한 값.
+        #   예전엔 60초로 잡아 뒀는데, 1분 간격으로 바꾸면서 예산이 45초가 되자
+        #   첫 라운드조차 못 돌고 멈췄다. 기준은 실측에 맞춘다.
         left = a.budget - (time.time() - t0)
-        if left < 60:
+        if left < ROUND_SEC:
             print('   예산이 %.0f초 남아 %d라운드에서 멈춘다' % (left, r - 1)); break
         rs = time.time()
         try:
