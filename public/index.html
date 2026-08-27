@@ -4,7 +4,22 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b1220;color:#e2e8f0;font-family:'Segoe UI',Arial,sans-serif;font-size:13px;
-     padding:18px 20px 60px}
+     padding:18px 20px 96px}   /* 아래 고정 바에 가리지 않게 */
+
+/* ★화면 아래에 붙어 따라다니는 조작 바.
+   표가 길어 스크롤하다 보면 위쪽 버튼이 사라진다 — 무엇을 보고 있는지
+   놓치기 쉽다. 위가 아니라 아래에 두는 이유는 표 헤더가 이미
+   상단에 sticky 로 붙어 있어 서로 겹치기 때문이다. */
+.stickybar{position:fixed;left:0;right:0;bottom:0;z-index:40;
+  background:rgba(11,18,32,.97);border-top:1px solid #24344d;
+  box-shadow:0 -6px 18px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+.sbin{max-width:1560px;margin:0 auto;padding:9px 20px;
+  display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.sbin b{font-size:11px;color:#64748b;font-weight:700;margin-right:5px}
+.sbin .badge{font-size:10.5px;color:#64748b;flex:1 1 260px;min-width:0}
+@media(max-width:860px){.sbin{gap:10px;padding:7px 12px}
+  .sbin .badge{display:none}
+  body{padding-bottom:120px}}
 .wrap{max-width:1560px;margin:0 auto}
 h1{font-size:21px;color:#f1f5f9;font-weight:700;letter-spacing:-.3px}
 h2{font-size:16px;color:#f1f5f9;margin:30px 0 6px;font-weight:700}
@@ -143,13 +158,8 @@ or fails to fill more than <b>5%</b> of the time.</div>
 <div id="trendNone" class="sub" hidden>Only one snapshot so far — the trend appears once
   the collector has run a few more times.</div>
 
-<div class="ctrl">
-  <span><b>ORDER SIZE</b><span class="seg" id="segZ"></span></span>
-  <span><b>COST</b><span class="seg" id="segFee"></span></span>
-  <span class="badge" id="feeNote"></span>
-</div>
-<div class="note" id="feeTable" style="margin-top:6px;display:none"></div>
-<div class="ctrl" style="margin-top:6px">
+<div class="note" id="feeTable" style="margin:8px 0 0;display:none"></div>
+<div class="ctrl" style="margin-top:8px">
   <span class="badge">Columns sorted <b>best &rarr; worst</b> for the selected size &middot;
     rows by market cap &middot; cell colour = rank <b>within that pair</b></span>
 </div>
@@ -204,7 +214,6 @@ or fails to fill more than <b>5%</b> of the time.</div>
 
 <h2>Dispersion <span class="sm">&mdash; bar = p10&ndash;p90, box = p25&ndash;p75, light line = median. Wider means <b>it depends on when you trade</b></span></h2>
 <div class="ctrl">
-  <span><b>MARKET</b><span class="seg" id="segDG"></span></span>
   <span><b>PAIR</b><select id="selCoin" style="background:#0b1220;color:#e2e8f0;border:1px solid #24344d;
     border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:inherit"></select></span>
 </div>
@@ -232,6 +241,15 @@ before execution, DEX sequencer latency, USDT/USD depeg (Extended quotes in USD)
 opens</b>. RWA rankings must be re-measured during US market hours.<br>
 <b>Fees excluded</b> &mdash; tiers and promotions differ by venue and would blur the ranking.
 Add taker fees on top for real cost.
+</div>
+
+<div class="stickybar">
+  <div class="sbin">
+    <span><b>SIZE</b><span class="seg" id="segZ"></span></span>
+    <span><b>COST</b><span class="seg" id="segFee"></span></span>
+    <span><b>MARKET</b><span class="seg" id="segDG"></span></span>
+    <span class="badge" id="feeNote"></span>
+  </div>
 </div>
 
 <div class="foot">
@@ -805,7 +823,7 @@ function drawAll(){
 mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI),
       function(k){ ZI = +k; drawAll(); });
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
-      function(k){ DG = k; refreshCoinSel(); drawDist(); });
+      function(k){ DG = k; SPK = k; refreshCoinSel(); drawDist(); drawSpikes(); });
 mkSeg('segFee', [['1','slippage + fee'], ['0','slippage only']], WITHFEE ? '1' : '0',
       function(k){ WITHFEE = (k === '1'); drawFeeNote(); drawAll(); drawTrends(); });
 mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
