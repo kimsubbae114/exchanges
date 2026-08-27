@@ -368,6 +368,8 @@ let WITHFEE = false;
 /* 값 하나를 꺼낼 때는 언제나 이 함수를 쓴다 — 표·순위·색이 따로 놀지 않게. */
 function val(c){ if(!c || c.med==null) return null;
   return WITHFEE ? c.med + (c.fee||0) : c.med; }
+/* 분포 막대처럼 med 가 아닌 값을 옮길 때 쓴다 */
+function FEE(c){ return WITHFEE ? (c && c.fee || 0) : 0; }
 
 const fmtUsd = s => s>=1e6 ? '$'+(s/1e6)+'M' : '$'+(s/1000)+'k';
 const coinsOf = g => (ORDER[g]||[]).filter(c => D.by_coin[g] && D.by_coin[g][c]);
@@ -444,7 +446,7 @@ function pairTable(g){
         + (ex ? '\n→ excluded from ranking (could not fill the size)' : '');
       h += '<td class="'+cls+'"><div class="cell '+(thin?'thin':(ex?'excl':''))+'" title="'+tip.replace(/"/g,'&quot;')+'" '
          + 'style="background:'+rankColor(rk[v],n)+'">'
-         + '<div class="v">'+c.med.toFixed(c.med<1?2:1)+'<span class="rk"> '+(ex?'':(rk[v]||''))+'</span></div>'
+         + '<div class="v">'+shown.toFixed(shown<1?2:1)+'<span class="rk"> '+(ex?'':(rk[v]||''))+'</span></div>'
          + (thin ? '<span class="xtag thin">n=' + c.n + '</span>'
                  : ex ? '<span class="xtag">unfilled</span>'
                : '')
@@ -508,9 +510,9 @@ function drawDist(){
     h += '<tr><td class="pn" style="'+(v==='grvt'?'border-left:3px solid #94a3b8':'')+'">'+(VNAME[v]||v)+'</td>';
     if(!c || c.p10==null){ h += '<td colspan="4"><div class="cell na">no data</div></td></tr>'; continue; }
     h += '<td style="padding:8px 12px"><div class="dist" style="width:'+W+'px">'
-       + '<div class="whisk" style="left:'+X(c.p10)+'px;width:'+(X(c.p90)-X(c.p10))+'px"></div>'
-       + '<div class="box" style="left:'+X(c.p25)+'px;width:'+Math.max(2,X(c.p75)-X(c.p25))+'px"></div>'
-       + '<div class="med" style="left:'+X(c.med)+'px"></div></div></td>'
+       + '<div class="whisk" style="left:'+X(c.p10+FEE(c))+'px;width:'+(X(c.p90+FEE(c))-X(c.p10+FEE(c)))+'px"></div>'
+       + '<div class="box" style="left:'+X(c.p25+FEE(c))+'px;width:'+Math.max(2,X(c.p75+FEE(c))-X(c.p25+FEE(c)))+'px"></div>'
+       + '<div class="med" style="left:'+X(val(c))+'px"></div></div></td>'
        + '<td><div class="cell"><span class="v">'+val(c).toFixed(2)+'</span></div></td>'
       + '<td><div class="cell na">—</div></td>'
        + '<td><div class="cell m" style="font-size:11px;opacity:1">'
