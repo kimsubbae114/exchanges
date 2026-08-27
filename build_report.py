@@ -659,7 +659,7 @@ function spikeRows(){
 /* ★시계열 — "저 거래소는 자주 솟구치는구나"를 눈으로 보게 한다.
    요약 숫자는 사건을 지운다. 언제 얼마나 튀었는지는 시간축에서만 보인다.
    종목·사이즈마다 절대 수준이 달라 한 번에 한 조합만 그린다. */
-let SPKKEY = null, SPKLOG = true;
+let SPKKEY = null, SPKLOG = false;
 
 function spkKeys(){ return Object.keys(D.series || {}); }
 
@@ -840,7 +840,7 @@ mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
   SPKKEY = keys[0];
   mkSeg('spkPair', keys.map(k => [k, k.split('|')[0]]), SPKKEY,
         function(k){ SPKKEY = k; SPKON = null; drawSpikeChart(); });
-  mkSeg('spkScale', [['log', 'log'], ['lin', 'linear']], 'log',
+  mkSeg('spkScale', [['lin', 'linear'], ['log', 'log']], SPKLOG ? 'log' : 'lin',
         function(k){ SPKLOG = (k === 'log'); drawSpikeChart(); });
 })();
 
