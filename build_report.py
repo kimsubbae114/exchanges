@@ -218,19 +218,20 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
     BTC look calm and ADA look wild no matter what. <b>Lower is better.</b></span>
 </div>
 <div class="spikeGrid">
-  <div class="tchart"><div class="tcap">How often &times; how hard
-    <span>&mdash; bottom-left is calm, top-right blows out</span></div>
+  <div class="tchart"><div class="tcap">How often &times; how much worse
+    <span>&mdash; bps over that venue's own normal. Bottom-left is calm</span></div>
     <svg id="svgSpike" viewBox="0 0 620 400" preserveAspectRatio="xMidYMid meet"></svg></div>
   <div id="spikeWrap"></div>
 </div>
 <div class="note">
-  <b>How to read this.</b> <b>2&times;/5&times;</b> is <b>how often</b> a reading came in at
-  twice or five times that cell's normal level. <b>p99</b> is <b>how bad</b> the worst 1% got &mdash;
-  shown as a multiple <i>and</i> in bps, because the two tell different stories.<br>
-  ★A big multiple off a tiny baseline is not a big loss. GRVT's BTC median is
-  <b>0.006 bps</b>, so a 2.5&nbsp;bps reading shows up as <b>398&times;</b> &mdash; alarming as a ratio,
-  minor as a cost. Read the bps column before the multiple.<br>
-  Cells whose baseline is under <b>__MINBASE__ bps</b> are the ones that inflate multiples like that.
+  <b>How to read this.</b> Every venue is lined up at its own normal level, and what is
+  plotted is <b>how many bps worse than normal</b> a reading came in. Same unit for every
+  venue and every pair, so one chart holds all of them.<br>
+  <b>Left&ndash;right</b> = how often it happens. <b>Up&ndash;down</b> = how bad the worst 1% gets.
+  Bottom-left is a venue you can plan around; top-right is one that surprises you.<br>
+  ★We do not use "&times; normal" as the headline. GRVT's BTC median is 0.006&nbsp;bps, so a
+  2.5&nbsp;bps reading is <b>398&times;</b> &mdash; alarming as a ratio, minor as a cost.
+  Measuring the gap in bps removes that distortion.
 </div>
 
 <h2>Dispersion <span class="sm">&mdash; bar = p10&ndash;p90, box = p25&ndash;p75, light line = median. Wider means <b>it depends on when you trade</b></span></h2>
@@ -638,7 +639,7 @@ function spikeRows(){
   if (SPK === 'all') src = S.by_venue;
   else if (S.by_group[SPK]) src = S.by_group[SPK];
   else src = S.by_size[SPK] || S.by_venue;
-  return VEN.filter(v => src[v]).map(v => [v, src[v]]).sort((a, b) => a[1].f2 - b[1].f2);
+  return VEN.filter(v => src[v]).map(v => [v, src[v]]).sort((a, b) => a[1].e2 - b[1].e2);
 }
 
 /* ★산점도 — 가로는 "얼마나 자주", 세로는 "얼마나 크게".
@@ -649,11 +650,11 @@ function drawSpikeChart(){
   if (!svg) return;
   if (!rows.length){ svg.innerHTML = ''; return; }
   const W = 620, H = 400, L = 52, R = 118, T = 18, B = 42;
-  const xs = rows.map(r => r[1].f2), ys = rows.map(r => r[1].p99x);
+  const xs = rows.map(r => r[1].e2), ys = rows.map(r => r[1].ex99);
   const xMax = Math.max(...xs) * 1.15 || 1;
   /* ★세로는 로그 눈금이다. p99 가 2.6배부터 47배까지 벌어져 있어
      선형으로 그리면 아래쪽 거래소들이 한 점에 뭉친다. */
-  const yMin = 1, yMax = Math.max(...ys) * 1.3 || 10;
+  const yMin = 1, yMax = Math.max(...ys) * 1.4 || 10;
   const X = v => L + (v / xMax) * (W - L - R);
   const Y = v => H - B - (Math.log(Math.max(v, yMin)) / Math.log(yMax)) * (H - T - B);
 
@@ -666,31 +667,32 @@ function drawSpikeChart(){
        + '<text x="' + x + '" y="' + (H - B + 15) + '" fill="#475569" font-size="10"'
        + ' text-anchor="middle">' + xv.toFixed(1) + '%</text>';
   }
-  for (const yv of [2, 5, 10, 25, 50, 100]){
+  for (const yv of [2, 5, 10, 25, 50, 100, 250]){
     if (yv > yMax) continue;
     const y = Y(yv);
     g += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y
        + '" stroke="#172033" stroke-width="1"/>'
        + '<text x="' + (L - 7) + '" y="' + (y + 3) + '" fill="#475569" font-size="10"'
-       + ' text-anchor="end">' + yv + '&times;</text>';
+       + ' text-anchor="end">' + yv + '</text>';
   }
   g += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 6) + '" fill="#64748b" font-size="10.5"'
-     + ' text-anchor="middle">how often it doubles (% of readings)</text>'
+     + ' text-anchor="middle">how often it costs 2 bps more than normal (%)</text>'
      + '<text x="13" y="' + ((T + H - B) / 2) + '" fill="#64748b" font-size="10.5"'
      + ' text-anchor="middle" transform="rotate(-90 13 ' + ((T + H - B) / 2) + ')">'
-     + 'how hard, worst 1% (&times; normal)</text>';
+     + 'how much worse, worst 1% (bps over normal)</text>';
 
   // 점 — 겹치는 이름은 위아래로 흩어 놓는다
   const placed = [];
   for (const [v, b] of rows){
-    const me = v === 'grvt', x = X(b.f2), y = Y(b.p99x);
+    const me = v === 'grvt', x = X(b.e2), y = Y(b.ex99);
     let ly = y + 3;
     while (placed.some(q => Math.abs(q - ly) < 11)) ly += 11;
     placed.push(ly);
     g += '<circle cx="' + x + '" cy="' + y + '" r="' + (me ? 6.5 : 4.5) + '" fill="'
        + (me ? '#38bdf8' : '#64748b') + '" ' + (me ? 'stroke="#0ea5e9" stroke-width="2"' : '') + '>'
-       + '<title>' + (VNAME[v] || v) + ' — doubles ' + b.f2.toFixed(2) + '% of the time; '
-       + 'worst 1% is ' + b.p99x.toFixed(1) + 'x normal (' + b.p99bps.toFixed(1) + ' bps)</title></circle>'
+       + '<title>' + (VNAME[v] || v) + ' — pays 2 bps over normal ' + b.e2.toFixed(2) + '% of the time; '
+       + 'the worst 1% pay ' + b.ex99.toFixed(1) + ' bps over normal (worst ever '
+       + b.exmax.toFixed(0) + ')</title></circle>'
        + '<text x="' + (x + 9) + '" y="' + ly + '" fill="' + (me ? '#7dd3fc' : '#94a3b8')
        + '" font-size="' + (me ? 11.5 : 10.5) + '"' + (me ? ' font-weight="700"' : '') + '>'
        + (VNAME[v] || v) + '</text>';
@@ -702,16 +704,16 @@ function drawSpikes(){
   drawSpikeChart();
   const rows = spikeRows(), box = document.getElementById('spikeWrap');
   if (!rows.length){ box.innerHTML = '<div class="note">not enough readings yet</div>'; return; }
-  const maxF = Math.max(...rows.map(r => r[1].f2), 1);
+  const maxF = Math.max(...rows.map(r => r[1].e2), 1);
 
   let h = '<div class="tw"><table><thead><tr>'
     + '<th style="text-align:left;position:sticky;left:0;background:#0f172a">Venue</th>'
-    + '<th>2&times; or worse</th><th>5&times; or worse</th>'
-    + '<th>worst 1% (p99)</th><th>worst single</th><th>normal level</th>'
+    + '<th>+2 bps or more</th><th>+5 bps or more</th>'
+    + '<th>when it spikes</th><th>worst 1%</th><th>worst ever</th><th>normal level</th>'
     + '</tr></thead><tbody>';
   for (const [v, b] of rows){
     const me = v === 'grvt';
-    const w = (b.f2 / maxF) * 100;
+    const w = (b.e2 / maxF) * 100;
     h += '<tr>'
       + '<td class="pn"' + (me ? ' style="color:#7dd3fc"' : '') + '>' + (VNAME[v] || v) + '</td>'
       /* 막대 + 숫자 — 순서를 눈으로 바로 잡을 수 있게 */
@@ -719,14 +721,16 @@ function drawSpikes(){
       +   '<div style="position:relative;height:15px;background:#0b1220;border-radius:3px">'
       +     '<div style="position:absolute;left:0;top:0;height:15px;border-radius:3px;width:' + w.toFixed(1) + '%;'
       +       'background:' + (me ? '#0ea5e9' : '#334155') + '"></div></div>'
-      +   '<div class="m" style="opacity:1;font-size:11px;margin-top:3px">' + b.f2.toFixed(2) + '%</div></div></td>'
-      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.f5.toFixed(2) + '%</span></div></td>'
-      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.p99x.toFixed(1) + '&times;</span>'
-      +   '<div class="m" style="opacity:1">' + b.p99bps.toFixed(1) + ' bps</div></div></td>'
-      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.maxx.toFixed(0) + '&times;</span>'
-      +   '<div class="m" style="opacity:1">' + b.maxbps.toFixed(1) + ' bps</div></div></td>'
+      +   '<div class="m" style="opacity:1;font-size:11px;margin-top:3px">' + b.e2.toFixed(2) + '%</div></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.e5.toFixed(2) + '%</span></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">+' + b.exmean.toFixed(1) + '</span>'
+      +   '<div class="m" style="opacity:1">bps on average</div></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">+' + b.ex99.toFixed(1) + '</span>'
+      +   '<div class="m" style="opacity:1">bps over normal</div></div></td>'
+      + '<td><div class="cell"><span class="m" style="opacity:1;font-size:11.5px">+'
+      +   b.exmax.toFixed(0) + ' bps</span></div></td>'
       + '<td><div class="cell"><span class="m" style="opacity:1;font-size:11.5px">'
-      +   b.medbps.toFixed(3) + ' bps</span></div></td>'
+      +   b.medbps.toFixed(2) + ' bps</span></div></td>'
       + '</tr>';
   }
   box.innerHTML = h + '</tbody></table></div>';
@@ -784,7 +788,7 @@ HTML = (HTML.replace('__NV__', str(len(M['venues'])))
             .replace('__SITE__', SITE)
             .replace('__MINN__', str(M.get('min_n', 100)))
             .replace('__MAXSHORT__', '%g' % (M.get('max_short', .05) * 100))
-            .replace('__MINBASE__', str((D.get('spike') or {}).get('min_base', 0.05))))
+            )
 def _syntax_gate(html):
     """★<script> 안이 파싱되는지 확인한다.
 

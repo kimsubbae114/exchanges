@@ -195,38 +195,44 @@ for g in ('MAJOR', 'RWA'):
 #
 # ★배수만 보면 과장된다 — GRVT BTC 는 중위가 0.0064bps 라 2.5bps 만 나와도
 #   "398배"가 된다. 실제로 문 손실은 2.5bps 다. 그래서 절대값을 반드시 같이 낸다.
-MIN_BASE = 0.05      # 기준선이 이보다 낮은 칸은 배수가 폭발한다 — 따로 표시한다
 
 sp = main[main.ok].copy()
 if len(sp):
     base = sp.groupby(['venue', 'coin', 'usd_size']).slippage_bps.transform('median')
     sp['base'] = base
-    sp = sp[sp.base > 0].copy()
-    sp['x'] = sp.slippage_bps / sp.base
+    sp['x'] = sp.slippage_bps / sp.base.replace(0, float('nan'))
+    # ★★기준선을 0 으로 맞추고 **초과분(bps)** 을 본다 — 이것이 주 지표다.
+    #   "평소보다 얼마나 더 물었나"는 종목·거래소가 달라도 같은 단위(bps)라
+    #   한 그래프에 올릴 수 있고, 실제 비용을 그대로 반영한다.
+    #
+    #   배수(x)로만 보면 기준선이 작은 칸이 과장된다(GRVT BTC 는 0.006bps 라 398배).
+    #   진폭을 그 칸의 평소 진폭으로 나누는 방법도 시험했는데, 늘 출렁이는 거래소는
+    #   분모가 커져 "정상"이 되어 버려 **변별력이 사라졌다**(CV 0.50 -> 0.10).
+    #   초과분(bps)은 그 함정이 없다(빈도 폭 18.9%p, p99 CV 1.20).
+    sp['ex'] = (sp.slippage_bps - sp.base).clip(lower=0)
 
     def spike_block(d):
         if not len(d):
             return None
-        solid = d[d.base >= MIN_BASE]        # 기준선이 의미 있는 칸만
         out = {
             'n': int(len(d)),
-            'f2': round(float((d.x >= 2).mean()) * 100, 2),
-            'f3': round(float((d.x >= 3).mean()) * 100, 2),
-            'f5': round(float((d.x >= 5).mean()) * 100, 2),
-            'p99x': round(float(d.x.quantile(.99)), 1),
-            'maxx': round(float(d.x.max()), 1),
-            # ★배수가 아니라 실제로 얼마를 물었나
-            'p99bps': round(float(d.slippage_bps.quantile(.99)), 3),
-            'maxbps': round(float(d.slippage_bps.max()), 3),
+            # ★주 지표 — 기준선 대비 초과분(bps)
+            'e2': round(float((d.ex >= 2).mean()) * 100, 2),    # 2bps 넘게 더 문 비율
+            'e5': round(float((d.ex >= 5).mean()) * 100, 2),
+            'e10': round(float((d.ex >= 10).mean()) * 100, 2),
+            'ex95': round(float(d.ex.quantile(.95)), 2),
+            'ex99': round(float(d.ex.quantile(.99)), 2),
+            'exmax': round(float(d.ex.max()), 1),
+            # 스파이크일 때 평균적으로 얼마나 더 물었나 (2bps 초과 건들의 평균)
+            'exmean': round(float(d.ex[d.ex >= 2].mean()), 2) if (d.ex >= 2).any() else 0.0,
             'medbps': round(float(d.slippage_bps.median()), 3),
+            # 보조 — 배수. 참고용으로만 남긴다(기준선이 작으면 과장된다)
+            'f2': round(float((d.x >= 2).mean()) * 100, 2) if d.x.notna().any() else None,
+            'p99x': round(float(d.x.quantile(.99)), 1) if d.x.notna().any() else None,
         }
-        # 기준선이 지나치게 낮은 칸을 뺀 값 — 배수 왜곡을 걷어낸 판
-        if len(solid) > 30:
-            out['f2_solid'] = round(float((solid.x >= 2).mean()) * 100, 2)
-            out['p99x_solid'] = round(float(solid.x.quantile(.99)), 1)
         return out
 
-    res['spike'] = {'min_base': MIN_BASE, 'by_venue': {}, 'by_group': {}, 'by_size': {}}
+    res['spike'] = {'by_venue': {}, 'by_group': {}, 'by_size': {}}
     for v, d0 in sp.groupby('venue'):
         res['spike']['by_venue'][v] = spike_block(d0)
     for (v, g), d0 in sp.groupby(['venue', 'group']):
@@ -234,10 +240,10 @@ if len(sp):
     for (v, z), d0 in sp.groupby(['venue', 'usd_size']):
         res['spike']['by_size'].setdefault(str(int(z)), {})[v] = spike_block(d0)
 
-    print('★스파이크 — 2배 초과 비율(%) 낮은 순')
-    for v, b in sorted(res['spike']['by_venue'].items(), key=lambda x: x[1]['f2']):
-        print('   %-12s 2배↑ %5.2f%% · 5배↑ %5.2f%% · p99 %5.1f배(%6.2f bps) · 최대 %6.1f배'
-              % (v, b['f2'], b['f5'], b['p99x'], b['p99bps'], b['maxx']))
+    print('★스파이크 — 기준선 대비 2bps 넘게 더 문 비율(%) 낮은 순')
+    for v, b in sorted(res['spike']['by_venue'].items(), key=lambda x: x[1]['e2']):
+        print('   %-12s 2bps↑ %5.2f%% · 5bps↑ %5.2f%% · p99 초과 %7.2f bps · 최악 %6.1f bps'
+              % (v, b['e2'], b['e5'], b['ex99'], b['exmax']))
 else:
     res['spike'] = None
 
