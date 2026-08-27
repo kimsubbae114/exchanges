@@ -159,10 +159,9 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 <div class="ctrl" style="margin-top:12px">
   <b>COST</b>
   <div class="seg" id="segFee"></div>
-  <span class="badge" id="feeNote">taker fees are excluded by default &mdash;
-    they vary by tier and promotion, so they are a poor basis for comparison.
-    Turn them on to see what a taker actually pays.</span>
+  <span class="badge" id="feeNote"></span>
 </div>
+<div class="note" id="feeTable" style="margin-top:6px;display:none"></div>
 
 <!-- ─────────── 순위 추이 ───────────
      ★차트를 둘로 나눈 이유
@@ -612,7 +611,28 @@ mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
       function(k){ DG = k; refreshCoinSel(); drawDist(); });
 mkSeg('segFee', [['0','slippage only'], ['1','+ taker fee']], WITHFEE ? '1' : '0',
-      function(k){ WITHFEE = (k === '1'); drawAll(); });
+      function(k){ WITHFEE = (k === '1'); drawFeeNote(); drawAll(); });
+
+/* ★어떤 수수료를 더했는지 보여 준다. 숫자만 바뀌고 근거가 없으면 믿을 수 없다. */
+function drawFeeNote(){
+  const F = D.meta.fees || {}, asof = D.meta.fee_asof;
+  document.getElementById('feeNote').innerHTML = WITHFEE
+    ? 'showing <b>slippage + taker fee</b> at the <b>lowest tier, no discounts</b>'
+      + (asof ? ' &middot; checked ' + asof : '')
+    : 'taker fees are excluded by default &mdash; they vary by tier and promotion, '
+      + 'so they are a poor basis for comparison. Turn them on to see what a taker actually pays.';
+  const box = document.getElementById('feeTable');
+  const keys = Object.keys(F).filter(k => VEN.indexOf(k) >= 0);
+  if (!WITHFEE || !keys.length){ box.style.display = 'none'; return; }
+  keys.sort((a, b) => F[a] - F[b]);
+  box.style.display = '';
+  box.innerHTML = '<b>Taker fee added to every figure</b> (bps, lowest tier, no discounts'
+    + (asof ? ', checked ' + asof : '') + ')<br>'
+    + keys.map(k => (VNAME[k] || k) + ' <b>' + F[k].toFixed(1) + '</b>').join(' &nbsp;&middot;&nbsp; ')
+    + '<br><span style="color:#64748b">Your own rate will differ &mdash; volume tiers, '
+    + 'token discounts and promotions all move it. That is why the ranking excludes fees by default.</span>';
+}
+drawFeeNote();
 drawAll();
 initTrend();
 </script></body></html>"""

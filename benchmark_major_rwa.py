@@ -88,10 +88,50 @@ GROUPS = {'MAJOR': MAJOR, 'RWA': RWA}
 USD_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000]
 USD_SIZES_EXTRA = [5_000_000]        # --big 을 주면 여기까지 잰다(메이저 변별용)
 
-# 참고용 taker 수수료(등급·프로모션에 따라 달라진다 — 비교 순위에는 쓰지 않는다)
-FEES = {'binance': 0.00045, 'bybit': 0.00055, 'okx': 0.0005, 'mexc': 0.0002,
-        'kucoin': 0.0006, 'grvt': 0.00045, 'hyperliquid': 0.00035,
-        'aster': 0.00035, 'lighter': 0.0, 'extended': 0.00025}
+# ★참고용 taker 수수료 — **최저 등급(할인 없음) 기준**으로 통일한다.
+#   등급이 섞이면 비교가 어긋난다. 실제로 hyperliquid 에 0.00035 가 들어가 있었는데
+#   그건 base 가 아니라 **VIP 2**(누적 2,500만 달러) 값이었다. base 는 0.00045 다.
+#   출처와 확인일을 함께 적는다 — 출처 없는 숫자는 검증할 수 없다.
+FEE_ASOF = '2026-08-27'
+FEES = {
+    # 거래소        값        기준
+    'binance':   0.0005,    # VIP0 정가 0.05% (사용자 확인, 2026-08-27). 0.045% 는 BNB 할인가였다
+    'bybit':     0.00055,   # 비VIP 0.055%
+    'okx':       0.0005,    # Lv1 0.05%
+    'mexc':      0.0004,    # 최저 등급 0.04% (사용자 확인, 2026-08-27). 0.02% 는 프로모션가였다
+    'kucoin':    0.0006,    # Lv0 0.06%
+    'grvt':      0.00045,   # ★우리 기준점 — 공식값 확인 필요
+    'hyperliquid': 0.00045,  # ★API 확인 (feeSchedule.cross, 2026-08-27). 아래에서 자동 갱신한다
+    'aster':     0.0004,    # 최저 등급 0.04% (사용자 확인, 2026-08-27)
+    'lighter':   0.0,       # 무료 표방  ★프로모션 종료 여부 확인 필요
+    'extended':  0.00025,   # 0.025%  ★확인 필요
+}
+
+
+def load_fees(log=print):
+    """공개 API 로 받을 수 있는 수수료는 받아 온다 — 하드코딩은 낡는다.
+
+    ★지금은 hyperliquid 만 공개로 준다(`userFees` 의 feeSchedule).
+      나머지는 로그인해야 보이거나 공시 페이지에만 있어 손으로 적을 수밖에 없다.
+      받아온 값이 적어 둔 값과 다르면 **화면에 남긴다** — 조용히 바뀌면 안 된다.
+    """
+    try:
+        # 아무 주소나 넣어도 feeSchedule(기본표)은 같다. 잔고를 읽는 게 아니다.
+        r = S.post('https://api.hyperliquid.xyz/info',
+                   json={'type': 'userFees',
+                         'user': '0x0000000000000000000000000000000000000001'},
+                   timeout=15)
+        base = float((r.json().get('feeSchedule') or {}).get('cross'))
+        if base > 0:
+            old = FEES['hyperliquid']
+            FEES['hyperliquid'] = base
+            if abs(old - base) > 1e-9:
+                log('   hyperliquid 수수료 %.4f%% -> %.4f%% (API 기준으로 갱신)'
+                    % (old * 100, base * 100))
+            else:
+                log('   hyperliquid 수수료 %.4f%% (API 확인)' % (base * 100))
+    except Exception as e:
+        log('   hyperliquid 수수료 조회 실패 %s — 적어 둔 값을 쓴다' % e)
 
 UA = {'User-Agent': 'liquidity-benchmark/1.0'}
 TIMEOUT = 10

@@ -64,6 +64,26 @@ VENUES = sorted(main.venue.unique())
 SIZES = [int(s) for s in sorted(main.usd_size.unique())]
 
 
+# ★수수료는 수집 코드가 들고 있는 현재값을 그대로 쓴다 — 두 군데 적으면 어긋난다
+try:
+    import benchmark_major_rwa as _B
+    _B.load_fees(log=lambda *a: None)          # 공개 API 로 받을 수 있는 건 갱신
+    FEE_NOW = {k: round(v * 1e4, 3) for k, v in _B.FEES.items()}
+    FEE_ASOF = getattr(_B, 'FEE_ASOF', None)
+    print('수수료 기준 %s — %s' % (FEE_ASOF,
+          ' · '.join('%s %.1f' % (k, v) for k, v in sorted(FEE_NOW.items(), key=lambda x: x[1]))))
+except Exception as _e:
+    print('★수수료표를 못 읽었다 (%s) — 원시에 박힌 값을 쓴다' % _e)
+    FEE_NOW, FEE_ASOF = {}, None
+
+
+def v_name(d):
+    """이 칸이 어느 거래소인가. hyperliquid_raw 는 hyperliquid 와 같은 수수료다."""
+    if 'venue' not in d or not len(d):
+        return None
+    return str(d.venue.iloc[0]).replace('_raw', '')
+
+
 def cell(d):
     """한 칸 = 슬리피지 분포 + 체결 성공률 + 흔들림 + 표본수.
     ★체결 성공률은 **그 종목이 상장된 관측**만 분모로 한다(미상장은 빼야 공정하다)."""
@@ -86,10 +106,11 @@ def cell(d):
         pr = okd.groupby('round').slippage_bps.median()
         out['sd'] = round(float(pr.std()), 3) if len(pr) > 2 else None
 
-        # ★수수료 — 순위에는 안 쓰지만, 화면에서 켜고 끌 수 있게 값을 담아 둔다.
-        #   "슬리피지는 좋은데 수수료가 비싼 곳"을 가리면 실제 비용을 못 본다.
-        fb = okd.fee_bps.dropna()
-        out['fee'] = round(float(fb.iloc[0]), 3) if len(fb) else None
+        # ★수수료 — **원시에 박힌 값이 아니라 지금 값을 쓴다.**
+        #   슬리피지는 24시간 동안 잰 과거 측정치지만, 수수료는 "지금 내는 돈"이다.
+        #   과거 평균을 낼 이유가 없다. 실제로 원시에는 옛 값(hyperliquid 3.5 등)이
+        #   박혀 있어, 그대로 쓰면 고쳐 놓고도 화면에 옛 숫자가 나온다.
+        out['fee'] = FEE_NOW.get(v_name(d), None)
 
         # ★튐(스파이크) — 중위만 보면 "가끔 크게 나쁜 곳"과 "늘 고른 곳"이 같아 보인다.
         #   기준은 **그 칸의 중위값**이다. 절대 bps 로 자르면 BTC 는 영원히 안 튀고
@@ -126,6 +147,8 @@ res = {'meta': {
     'window_h': WINDOW_H,
     # ★측정 기준 — 공개 자료이므로 화면에 그대로 밝힌다
     'interval_sec': None,   # 아래에서 실측해 채운다
+    # ★어떤 수수료로 계산했는지 화면에 밝힌다. 안 보이면 검증할 수 없다.
+    'fees': FEE_NOW, 'fee_asof': FEE_ASOF,
 }}
 
 # 라운드 사이 실제 간격을 재서 적는다. "5분마다"라고 적어 놓고 실제로 다르면 거짓말이 된다.

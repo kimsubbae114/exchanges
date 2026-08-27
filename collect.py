@@ -62,6 +62,7 @@ def main():
     #     · lighter 가 market_id 를 몰라 전 종목 no_book 이 되고
     #     · mexc 계약크기가 기본값 1.0 이 되어 슬리피지가 어긋났다.
     B.load_contract_sizes(log=lambda *x: None)
+    B.load_fees(log=print)          # 공개 API 로 받을 수 있는 수수료는 받아 온다
 
     RECENT.mkdir(parents=True, exist_ok=True)
     out = RECENT / (dt.datetime.now().strftime('%Y%m%d_%H') + '.csv.gz')
