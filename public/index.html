@@ -633,15 +633,24 @@ function drawSpikeChart(){
               **절대값은 작은데 배수는 큰** 흔들림을 크게 그린다.
        linear 실제 비용 그대로다. 큰 스파이크만 보이고 잔잔한 구간은 바닥에 눕는다.
      둘은 다른 질문에 답한다 — 그래서 하나로 정하지 않고 버튼으로 둔다. */
+  /* 위쪽 COST 버튼을 그대로 따른다 — 한 화면이 두 가지 값을 말하면 안 된다.
+     (스파이크 표의 '초과분'은 기준선과 값에 같은 수수료가 더해져 상쇄되므로
+      수수료와 무관하다. 그래서 표는 건드리지 않는다.) */
+  const FEES = D.meta.fees || {};
+  const adj = (v, y) => y == null ? null : y + (WITHFEE ? (FEES[v] || 0) : 0);
+
   let hi = 0, lo = Infinity;
-  for (const v of vens) for (const y of blk.v[v]) {
+  for (const v of vens) for (const y0 of blk.v[v]) {
+    const y = adj(v, y0);
     if (y == null) continue; if (y > hi) hi = y; if (y > 0 && y < lo) lo = y;
   }
   if (!isFinite(lo) || lo <= 0) lo = 0.01;
   /* ★아래는 5퍼센타일에서 끊는다. 0 에 가까운 한 점 때문에 로그 축이
      아래로 한없이 늘어나면 정작 스파이크가 납작해진다. */
   const flat = [];
-  for (const v of vens) for (const y of blk.v[v]) if (y != null && y > 0) flat.push(y);
+  for (const v of vens) for (const y0 of blk.v[v]) {
+    const y = adj(v, y0); if (y != null && y > 0) flat.push(y);
+  }
   flat.sort((a, b) => a - b);
   if (flat.length > 20) lo = Math.max(flat[Math.floor(flat.length * .05)], hi / 1e4);
   hi = Math.max(hi * 1.05, lo * 4);
@@ -684,7 +693,8 @@ function drawSpikeChart(){
   for (const v of order){
     const on = SPKON.has(v), me = v === 'grvt';
     let d = '', pen = false;
-    blk.v[v].forEach((y, i) => {
+    blk.v[v].forEach((y0, i) => {
+      const y = adj(v, y0);
       if (y == null){ pen = false; return; }
       d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(y).toFixed(1) + ' ';
       pen = true;
@@ -698,7 +708,8 @@ function drawSpikeChart(){
 
   document.getElementById('spkCap').textContent =
     '— ' + SPKKEY.split('|')[0] + ' @ ' + fmtUsd(+SPKKEY.split('|')[1])
-    + ' · ' + n + ' readings';
+    + ' · ' + n + ' readings · '
+    + (WITHFEE ? 'slippage + taker fee' : 'slippage only');
   const hint = document.getElementById('spkHint');
   if (hint) hint.innerHTML = 'every line is one venue &middot; <b>tall spikes = it blows out</b>'
     + (SPKLOG ? ' &middot; log axis shows small moves too, so a tiny absolute wobble can look dramatic'
