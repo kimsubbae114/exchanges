@@ -227,11 +227,10 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 <div class="spikeGrid">
   <div class="tchart">
     <div class="tcap">Slippage over time <span id="spkCap"></span></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px">
-      <select id="spkPair" class="tsel"></select>
-      <span class="badge" style="align-self:center">every line is one venue &middot;
-        <b>tall spikes = it blows out</b> &middot; log scale, so a spike twice as tall
-        is roughly ten times worse</span>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:7px 0 5px;align-items:center">
+      <span class="seg" id="spkPair"></span>
+      <span class="seg" id="spkScale"></span>
+      <span class="badge" id="spkHint"></span>
     </div>
     <svg id="svgSpike" viewBox="0 0 660 330" preserveAspectRatio="xMidYMid meet"></svg>
     <div id="spkLeg" class="spkleg"></div>
@@ -660,7 +659,7 @@ function spikeRows(){
 /* ★시계열 — "저 거래소는 자주 솟구치는구나"를 눈으로 보게 한다.
    요약 숫자는 사건을 지운다. 언제 얼마나 튀었는지는 시간축에서만 보인다.
    종목·사이즈마다 절대 수준이 달라 한 번에 한 조합만 그린다. */
-let SPKKEY = null;
+let SPKKEY = null, SPKLOG = true;
 
 function spkKeys(){ return Object.keys(D.series || {}); }
 
@@ -675,8 +674,11 @@ function drawSpikeChart(){
   const blk = S[SPKKEY], vens = Object.keys(blk.v);
   const W = 660, H = 330, L = 46, R = 14, T = 12, B = 34;
 
-  /* ★세로는 로그다. 스파이크가 평소의 수십 배라 선형으로 그리면
-     평소 구간이 바닥에 눌려 붙어 아무것도 안 보인다. */
+  /* ★세로 축은 골라 볼 수 있다.
+       log    작은 값의 변동까지 보인다. 다만 0.006 -> 0.5 처럼
+              **절대값은 작은데 배수는 큰** 흔들림을 크게 그린다.
+       linear 실제 비용 그대로다. 큰 스파이크만 보이고 잔잔한 구간은 바닥에 눕는다.
+     둘은 다른 질문에 답한다 — 그래서 하나로 정하지 않고 버튼으로 둔다. */
   let hi = 0, lo = Infinity;
   for (const v of vens) for (const y of blk.v[v]) {
     if (y == null) continue; if (y > hi) hi = y; if (y > 0 && y < lo) lo = y;
@@ -691,20 +693,24 @@ function drawSpikeChart(){
   hi = Math.max(hi * 1.05, lo * 4);
   const n = blk.t.length;
   const X = i => L + (n < 2 ? 0 : (i / (n - 1)) * (W - L - R));
-  const Y = y => {
-    const c = Math.max(y == null ? lo : y, lo);
-    return H - B - (Math.log(c / lo) / Math.log(hi / lo)) * (H - T - B);
-  };
+  const Y = SPKLOG
+    ? y => { const c = Math.max(y == null ? lo : y, lo);
+             return H - B - (Math.log(c / lo) / Math.log(hi / lo)) * (H - T - B); }
+    : y => { const c = Math.max(y == null ? 0 : y, 0);
+             return H - B - (c / hi) * (H - T - B); };
 
   let g = '';
-  // 가로 눈금 — 사람이 아는 값에 맞춘다
-  for (const yv of [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500]){
-    if (yv < lo || yv > hi) continue;
+  // 가로 눈금 — 로그는 사람이 아는 값에, 선형은 고르게 나눈다
+  const ticks = SPKLOG
+    ? [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500].filter(y => y >= lo && y <= hi)
+    : Array.from({length: 5}, (_, i) => hi * (i + 1) / 5);
+  for (const yv of ticks){
     const y = Y(yv);
     g += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y
        + '" stroke="#172033" stroke-width="1"/>'
        + '<text x="' + (L - 6) + '" y="' + (y + 3) + '" fill="#475569" font-size="9.5"'
-       + ' text-anchor="end">' + yv + '</text>';
+       + ' text-anchor="end">' + (yv >= 10 ? yv.toFixed(0) : yv >= 1 ? yv.toFixed(1)
+           : yv.toFixed(yv < .01 ? 3 : 2)) + '</text>';
   }
   // 시간 눈금
   for (let k = 0; k <= 3; k++){
@@ -738,7 +744,11 @@ function drawSpikeChart(){
 
   document.getElementById('spkCap').textContent =
     '— ' + SPKKEY.split('|')[0] + ' @ ' + fmtUsd(+SPKKEY.split('|')[1])
-    + ' · ' + n + ' readings · log scale';
+    + ' · ' + n + ' readings';
+  const hint = document.getElementById('spkHint');
+  if (hint) hint.innerHTML = 'every line is one venue &middot; <b>tall spikes = it blows out</b>'
+    + (SPKLOG ? ' &middot; log axis shows small moves too, so a tiny absolute wobble can look dramatic'
+              : ' &middot; linear axis is the real cost &mdash; only the big spikes show');
   document.getElementById('spkLeg').innerHTML =
     '<span style="color:#475569;margin-right:2px">click to show/hide:</span>'
     + vens.slice().sort((a, b) => VEN.indexOf(a) - VEN.indexOf(b)).map(v =>
@@ -826,12 +836,12 @@ mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
         .concat(SZ.map(z => [String(z), fmtUsd(z)])), SPK,
       function(k){ SPK = k; drawSpikes(); });
 (function(){
-  const sel = document.getElementById('spkPair'); if (!sel) return;
-  const keys = spkKeys();
-  sel.innerHTML = keys.map(k => '<option value="' + k + '">' + k.split('|')[0]
-      + '</option>').join('');
-  sel.onchange = function(){ SPKKEY = sel.value; drawSpikeChart(); };
-  if (keys.length) { SPKKEY = keys[0]; sel.value = SPKKEY; }
+  const keys = spkKeys(); if (!keys.length) return;
+  SPKKEY = keys[0];
+  mkSeg('spkPair', keys.map(k => [k, k.split('|')[0]]), SPKKEY,
+        function(k){ SPKKEY = k; SPKON = null; drawSpikeChart(); });
+  mkSeg('spkScale', [['log', 'log'], ['lin', 'linear']], 'log',
+        function(k){ SPKLOG = (k === 'log'); drawSpikeChart(); });
 })();
 
 /* ★어떤 수수료를 더했는지 보여 준다. 숫자만 바뀌고 근거가 없으면 믿을 수 없다. */
