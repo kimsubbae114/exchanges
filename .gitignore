@@ -1,5 +1,19 @@
-# 데이터는 커밋한다(추이를 보려면 이력이 남아야 한다).
-# 여기 적는 것은 "올리면 안 되는 것"뿐이다.
+# 여기 적는 것은 "저장소에 올리지 않는 것"이다.
+#
+# ★데이터를 올리지 않는 이유 (2026-08-27)
+#   git 은 파일을 지워도 히스토리에 영구히 남긴다. 매시간 1MB 씩 커밋하면
+#   3개월이면 1GB 에 닿는다. 그래서 데이터는 두 곳에 둔다:
+#     · 원시(csv.gz)  — 수집 서버에만. 24시간 뒤 지운다
+#     · 집계·순위이력 — **GitHub Releases** (tag: data-YYYYMMDD)
+#       Releases 는 저장소 히스토리에 쌓이지 않아 용량을 먹지 않는다.
+#       압축하면 rank_history 16KB · agg 54KB 다.
+#
+#   새로 clone 한 뒤 화면을 만들려면:
+#     gh release download data-YYYYMMDD -D data && gunzip data/*.gz
+data/recent/
+data/agg_latest.json
+data/rank_history.json
+
 __pycache__/
 *.pyc
 .env
