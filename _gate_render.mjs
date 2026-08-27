@@ -34,6 +34,9 @@ const r = await p.evaluate(() => {
   o.venueOpts = (document.getElementById('trVenue') || {}).options?.length ?? 0;
   o.sizeOpts = (document.getElementById('trSize') || {}).options?.length ?? 0;
   o.slipPaths = document.querySelectorAll('#svgSlip path').length;
+  o.spikeRows = document.querySelectorAll('#spikeWrap tbody tr').length;
+  o.spikeOpts = (document.getElementById('segSpk') || {}).children?.length ?? 0;
+  try { o.WITHFEE = String(WITHFEE); } catch(e){ o.WITHFEE = 'undef'; }
   o.trendNoneShown = !(document.getElementById('trendNone') || {}).hidden;
   try { o.TS = String(TS); } catch (e) { o.TS = 'undef'; }
   return o;
@@ -57,6 +60,8 @@ need('추이 드롭다운'.padEnd(15), r.venueOpts > 0 && r.sizeOpts > 0,
 // 이력이 2시점 미만이면 추이가 비는 게 정상이다
 need('추이 선'.padEnd(15), r.slipPaths > 0 || r.trendNoneShown,
      `slip ${r.slipPaths}` + (r.trendNoneShown ? ' (이력 부족 안내 표시)' : ''));
+need('스파이크 표'.padEnd(15), r.spikeRows > 3, `${r.spikeRows}행 · 범위버튼 ${r.spikeOpts}`);
+need('수수료 기본'.padEnd(15), r.WITHFEE === 'true', `WITHFEE=${r.WITHFEE}`);
 need('JS 오류'.padEnd(15), errs.length === 0, errs.length ? errs[0] : '없음');
 
 console.log(bad ? `\n★렌더 게이트 실패 — 문제 ${bad}건` : '\n★렌더 게이트 통과');

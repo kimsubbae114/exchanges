@@ -184,6 +184,64 @@ for g in ('MAJOR', 'RWA'):
     d0 = main[main.group == g]
     res['by_coin'][g] = {c: table(d0[d0.coin == c]) for c in sorted(d0.coin.unique())}
 
+# ── 스파이크 (튐) ───────────────────────────────────────────────────────────
+# ★"평균은 좋은데 가끔 크게 당한다"를 드러내는 판. 중위만 보면 이게 안 보인다.
+#
+# 재는 법
+#  · 기준선 = 그 칸(거래소×종목×사이즈)의 **중위값**. 절대 bps 로 자르면
+#    BTC 는 영원히 안 튀고 ADA 는 늘 튀는 것으로 보인다.
+#  · 빈도 = 기준선의 2배·3배·5배를 넘은 관측의 비율(%)
+#  · 크기 = p99 배수와 최대 배수, **그리고 그때의 절대 bps**
+#
+# ★배수만 보면 과장된다 — GRVT BTC 는 중위가 0.0064bps 라 2.5bps 만 나와도
+#   "398배"가 된다. 실제로 문 손실은 2.5bps 다. 그래서 절대값을 반드시 같이 낸다.
+MIN_BASE = 0.05      # 기준선이 이보다 낮은 칸은 배수가 폭발한다 — 따로 표시한다
+
+sp = main[main.ok].copy()
+if len(sp):
+    base = sp.groupby(['venue', 'coin', 'usd_size']).slippage_bps.transform('median')
+    sp['base'] = base
+    sp = sp[sp.base > 0].copy()
+    sp['x'] = sp.slippage_bps / sp.base
+
+    def spike_block(d):
+        if not len(d):
+            return None
+        solid = d[d.base >= MIN_BASE]        # 기준선이 의미 있는 칸만
+        out = {
+            'n': int(len(d)),
+            'f2': round(float((d.x >= 2).mean()) * 100, 2),
+            'f3': round(float((d.x >= 3).mean()) * 100, 2),
+            'f5': round(float((d.x >= 5).mean()) * 100, 2),
+            'p99x': round(float(d.x.quantile(.99)), 1),
+            'maxx': round(float(d.x.max()), 1),
+            # ★배수가 아니라 실제로 얼마를 물었나
+            'p99bps': round(float(d.slippage_bps.quantile(.99)), 3),
+            'maxbps': round(float(d.slippage_bps.max()), 3),
+            'medbps': round(float(d.slippage_bps.median()), 3),
+        }
+        # 기준선이 지나치게 낮은 칸을 뺀 값 — 배수 왜곡을 걷어낸 판
+        if len(solid) > 30:
+            out['f2_solid'] = round(float((solid.x >= 2).mean()) * 100, 2)
+            out['p99x_solid'] = round(float(solid.x.quantile(.99)), 1)
+        return out
+
+    res['spike'] = {'min_base': MIN_BASE, 'by_venue': {}, 'by_group': {}, 'by_size': {}}
+    for v, d0 in sp.groupby('venue'):
+        res['spike']['by_venue'][v] = spike_block(d0)
+    for (v, g), d0 in sp.groupby(['venue', 'group']):
+        res['spike']['by_group'].setdefault(g, {})[v] = spike_block(d0)
+    for (v, z), d0 in sp.groupby(['venue', 'usd_size']):
+        res['spike']['by_size'].setdefault(str(int(z)), {})[v] = spike_block(d0)
+
+    print('★스파이크 — 2배 초과 비율(%) 낮은 순')
+    for v, b in sorted(res['spike']['by_venue'].items(), key=lambda x: x[1]['f2']):
+        print('   %-12s 2배↑ %5.2f%% · 5배↑ %5.2f%% · p99 %5.1f배(%6.2f bps) · 최대 %6.1f배'
+              % (v, b['f2'], b['f5'], b['p99x'], b['p99bps'], b['maxx']))
+else:
+    res['spike'] = None
+
+
 # ── 책 깊이 ─────────────────────────────────────────────────────────────────
 bk = main[main.book_usd_bid.notna()].groupby(['group', 'venue'])[
     ['book_usd_bid', 'book_usd_ask']].median()

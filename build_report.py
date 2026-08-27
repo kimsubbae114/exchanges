@@ -206,6 +206,23 @@ or fails to fill more than <b>__MAXSHORT__%</b> of the time.</div>
 
 <div id="sections"></div>
 
+<h2>Spikes <span class="sm">&mdash; how often it blows out, and how far. Median hides this</span></h2>
+<div class="ctrl">
+  <span><b>SCOPE</b><span class="seg" id="segSpk"></span></span>
+  <span class="badge">Baseline is that cell's own median &mdash; comparing raw bps would make
+    BTC look calm and ADA look wild no matter what. <b>Lower is better.</b></span>
+</div>
+<div id="spikeWrap"></div>
+<div class="note">
+  <b>How to read this.</b> <b>2&times;/5&times;</b> is <b>how often</b> a reading came in at
+  twice or five times that cell's normal level. <b>p99</b> is <b>how bad</b> the worst 1% got &mdash;
+  shown as a multiple <i>and</i> in bps, because the two tell different stories.<br>
+  ★A big multiple off a tiny baseline is not a big loss. GRVT's BTC median is
+  <b>0.006 bps</b>, so a 2.5&nbsp;bps reading shows up as <b>398&times;</b> &mdash; alarming as a ratio,
+  minor as a cost. Read the bps column before the multiple.<br>
+  Cells whose baseline is under <b>__MINBASE__ bps</b> are the ones that inflate multiples like that.
+</div>
+
 <h2>Dispersion <span class="sm">&mdash; bar = p10&ndash;p90, box = p25&ndash;p75, light line = median. Wider means <b>it depends on when you trade</b></span></h2>
 <div class="ctrl">
   <span><b>MARKET</b><span class="seg" id="segDG"></span></span>
@@ -402,10 +419,11 @@ const VNAME = {grvt:'GRVT', hyperliquid:'Hyperliquid', binance:'Binance', bybit:
 const CEX = ['binance','bybit','okx','mexc','kucoin'];
 const GROUPS = ['MAJOR','RWA'];
 let ZI = 2, DG = 'MAJOR', COIN = '__ALL__';
-/* ★수수료 포함 여부 — 기본은 **제외**다(사용자 결정).
-   수수료는 등급·프로모션에 따라 달라서 비교의 기준으로 삼기 어렵다.
-   다만 "슬리피지는 좋은데 수수료가 비싼 곳"이 가려지므로 켤 수 있게 둔다. */
-let WITHFEE = false;
+/* ★수수료 포함이 기본이다(사용자 결정, 2026-08-27).
+   실제로 무는 돈은 슬리피지 + 수수료다. 슬리피지만 보면
+   "수수료가 비싼 곳"이 부당하게 좋아 보인다.
+   등급·프로모션에 따라 달라지는 값이라, 무엇을 더했는지는 표로 밝힌다. */
+let WITHFEE = true;
 /* 값 하나를 꺼낼 때는 언제나 이 함수를 쓴다 — 표·순위·색이 따로 놀지 않게. */
 function val(c){ if(!c || c.med==null) return null;
   return WITHFEE ? c.med + (c.fee||0) : c.med; }
@@ -600,14 +618,64 @@ function refreshCoinSel(){
     + coins.map(function(c){ return '<option value="'+c+'"'+(c===COIN?' selected':'')+'>'+c+'</option>'; }).join('');
   sel.onchange = function(){ COIN = sel.value; drawDist(); };
 }
-function drawAll(){ drawVerdict(); drawSections(); refreshCoinSel(); drawDist(); drawCov(); }
+let SPK = 'all';   // all | MAJOR | RWA | 사이즈
+
+/* ★스파이크 판 — 빈도(얼마나 자주)와 크기(얼마나 심하게)를 나란히 둔다.
+   하나만 보면 오해한다. 자주 조금 튀는 곳과 드물게 크게 튀는 곳은 다른 문제다. */
+function spikeRows(){
+  const S = D.spike; if (!S) return [];
+  let src;
+  if (SPK === 'all') src = S.by_venue;
+  else if (S.by_group[SPK]) src = S.by_group[SPK];
+  else src = S.by_size[SPK] || S.by_venue;
+  return VEN.filter(v => src[v]).map(v => [v, src[v]]).sort((a, b) => a[1].f2 - b[1].f2);
+}
+
+function drawSpikes(){
+  const rows = spikeRows(), box = document.getElementById('spikeWrap');
+  if (!rows.length){ box.innerHTML = '<div class="note">not enough readings yet</div>'; return; }
+  const maxF = Math.max(...rows.map(r => r[1].f2), 1);
+
+  let h = '<div class="tw"><table><thead><tr>'
+    + '<th style="text-align:left;position:sticky;left:0;background:#0f172a">Venue</th>'
+    + '<th>2&times; or worse</th><th>5&times; or worse</th>'
+    + '<th>worst 1% (p99)</th><th>worst single</th><th>normal level</th>'
+    + '</tr></thead><tbody>';
+  for (const [v, b] of rows){
+    const me = v === 'grvt';
+    const w = (b.f2 / maxF) * 100;
+    h += '<tr>'
+      + '<td class="pn"' + (me ? ' style="color:#7dd3fc"' : '') + '>' + (VNAME[v] || v) + '</td>'
+      /* 막대 + 숫자 — 순서를 눈으로 바로 잡을 수 있게 */
+      + '<td><div class="cell" style="min-width:150px">'
+      +   '<div style="position:relative;height:15px;background:#0b1220;border-radius:3px">'
+      +     '<div style="position:absolute;left:0;top:0;height:15px;border-radius:3px;width:' + w.toFixed(1) + '%;'
+      +       'background:' + (me ? '#0ea5e9' : '#334155') + '"></div></div>'
+      +   '<div class="m" style="opacity:1;font-size:11px;margin-top:3px">' + b.f2.toFixed(2) + '%</div></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.f5.toFixed(2) + '%</span></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.p99x.toFixed(1) + '&times;</span>'
+      +   '<div class="m" style="opacity:1">' + b.p99bps.toFixed(1) + ' bps</div></div></td>'
+      + '<td><div class="cell"><span class="v" style="font-size:12.5px">' + b.maxx.toFixed(0) + '&times;</span>'
+      +   '<div class="m" style="opacity:1">' + b.maxbps.toFixed(1) + ' bps</div></div></td>'
+      + '<td><div class="cell"><span class="m" style="opacity:1;font-size:11.5px">'
+      +   b.medbps.toFixed(3) + ' bps</span></div></td>'
+      + '</tr>';
+  }
+  box.innerHTML = h + '</tbody></table></div>';
+}
+
+function drawAll(){
+  drawSpikes(); drawVerdict(); drawSections(); refreshCoinSel(); drawDist(); drawCov(); }
 
 mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI),
       function(k){ ZI = +k; drawAll(); });
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
       function(k){ DG = k; refreshCoinSel(); drawDist(); });
-mkSeg('segFee', [['0','slippage only'], ['1','+ taker fee']], WITHFEE ? '1' : '0',
+mkSeg('segFee', [['1','slippage + fee'], ['0','slippage only']], WITHFEE ? '1' : '0',
       function(k){ WITHFEE = (k === '1'); drawFeeNote(); drawAll(); });
+mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
+        .concat(SZ.map(z => [String(z), fmtUsd(z)])), SPK,
+      function(k){ SPK = k; drawSpikes(); });
 
 /* ★어떤 수수료를 더했는지 보여 준다. 숫자만 바뀌고 근거가 없으면 믿을 수 없다. */
 function drawFeeNote(){
@@ -647,7 +715,8 @@ HTML = (HTML.replace('__NV__', str(len(M['venues'])))
             .replace('__WIN__', str(M.get('window_h', 24)))
             .replace('__SITE__', SITE)
             .replace('__MINN__', str(M.get('min_n', 100)))
-            .replace('__MAXSHORT__', '%g' % (M.get('max_short', .05) * 100)))
+            .replace('__MAXSHORT__', '%g' % (M.get('max_short', .05) * 100))
+            .replace('__MINBASE__', str((D.get('spike') or {}).get('min_base', 0.05))))
 def _syntax_gate(html):
     """★<script> 안이 파싱되는지 확인한다.
 
