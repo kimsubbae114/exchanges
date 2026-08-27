@@ -282,18 +282,18 @@ if len(ts):
             out['v'][v] = [None if pd.isna(x) else round(float(x), 3) for x in col]
         return out if out['v'] else None
 
-    # 대표 조합 — 그룹마다 가장 많이 상장된 종목 몇 개 × 사이즈 전체
-    picks = []
-    for g in ('MAJOR', 'RWA'):
-        d0 = main[(main.group == g) & (~main.nobook)]
-        cnt = d0.groupby('coin').venue.nunique().sort_values(ascending=False)
-        picks += [(g, c) for c in cnt.head(2).index]
-    for g, coin in picks:
-        for z in [z for z in SIZES if z in (10000, 100000, 1000000)]:
-            k = '%s|%d' % (coin, z)
-            blk = series_for(coin, z)
-            if blk:
-                res['series'][k] = blk
+    # ★보여 줄 조합은 정해 둔다 — BTC·ETH·XAU·NVDA 를 $100k 하나로.
+    #   자동으로 고르면(상장 거래소 수 같은 기준) 그때그때 다른 종목이 뽑혀
+    #   어제와 오늘을 비교할 수 없다. 사람이 아는 네 종목으로 고정한다.
+    #   $100k 는 "진짜 물량"과 "장난감 물량"의 경계라 변별이 가장 잘 된다.
+    SERIES_PAIRS = ['BTC', 'ETH', 'XAU', 'NVDA']
+    SERIES_SIZE = 100000
+    for coin in SERIES_PAIRS:
+        blk = series_for(coin, SERIES_SIZE)
+        if blk:
+            res['series']['%s|%d' % (coin, SERIES_SIZE)] = blk
+        else:
+            print('   ★시계열 %s 는 표본이 모자라 건너뜀' % coin)
     print('★시계열 %d조합 · 한 선당 최대 %d점' % (len(res['series']), SERIES_MAX))
 
 

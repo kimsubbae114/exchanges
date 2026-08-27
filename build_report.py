@@ -664,12 +664,14 @@ let SPKKEY = null;
 
 function spkKeys(){ return Object.keys(D.series || {}); }
 
+
+
 function drawSpikeChart(){
   const S = D.series || {}, svg = document.getElementById('svgSpike');
   if (!svg) return;
   const keys = spkKeys();
   if (!keys.length){ svg.innerHTML = ''; return; }
-  if (!SPKKEY || !S[SPKKEY]) SPKKEY = keys.find(k => k.startsWith('BTC|100000')) || keys[0];
+  if (!SPKKEY || !S[SPKKEY]) SPKKEY = keys[0];
   const blk = S[SPKKEY], vens = Object.keys(blk.v);
   const W = 660, H = 330, L = 46, R = 14, T = 12, B = 34;
 
@@ -680,7 +682,13 @@ function drawSpikeChart(){
     if (y == null) continue; if (y > hi) hi = y; if (y > 0 && y < lo) lo = y;
   }
   if (!isFinite(lo) || lo <= 0) lo = 0.01;
-  hi = Math.max(hi, lo * 10);
+  /* ★아래는 5퍼센타일에서 끊는다. 0 에 가까운 한 점 때문에 로그 축이
+     아래로 한없이 늘어나면 정작 스파이크가 납작해진다. */
+  const flat = [];
+  for (const v of vens) for (const y of blk.v[v]) if (y != null && y > 0) flat.push(y);
+  flat.sort((a, b) => a - b);
+  if (flat.length > 20) lo = Math.max(flat[Math.floor(flat.length * .05)], hi / 1e4);
+  hi = Math.max(hi * 1.05, lo * 4);
   const n = blk.t.length;
   const X = i => L + (n < 2 ? 0 : (i / (n - 1)) * (W - L - R));
   const Y = y => {
@@ -821,9 +829,9 @@ mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
   const sel = document.getElementById('spkPair'); if (!sel) return;
   const keys = spkKeys();
   sel.innerHTML = keys.map(k => '<option value="' + k + '">' + k.split('|')[0]
-      + ' · ' + fmtUsd(+k.split('|')[1]) + '</option>').join('');
+      + '</option>').join('');
   sel.onchange = function(){ SPKKEY = sel.value; drawSpikeChart(); };
-  if (keys.length) { SPKKEY = keys.find(k => k.startsWith('BTC|100000')) || keys[0]; sel.value = SPKKEY; }
+  if (keys.length) { SPKKEY = keys[0]; sel.value = SPKKEY; }
 })();
 
 /* ★어떤 수수료를 더했는지 보여 준다. 숫자만 바뀌고 근거가 없으면 믿을 수 없다. */
