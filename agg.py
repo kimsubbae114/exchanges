@@ -310,18 +310,21 @@ if len(ts):
             out['v'][v] = [None if pd.isna(x) else round(float(x), 3) for x in col]
         return out if out['v'] else None
 
-    # ★보여 줄 조합은 정해 둔다 — BTC·ETH·XAU·NVDA 를 $100k 하나로.
-    #   자동으로 고르면(상장 거래소 수 같은 기준) 그때그때 다른 종목이 뽑혀
-    #   어제와 오늘을 비교할 수 없다. 사람이 아는 네 종목으로 고정한다.
-    #   $100k 는 "진짜 물량"과 "장난감 물량"의 경계라 변별이 가장 잘 된다.
+    # ★종목은 정해 두고, **규모는 전부** 담는다.
+    #   종목을 자동으로 고르면 그때그때 다른 것이 뽑혀 어제와 오늘을 비교할 수 없다.
+    #   반면 규모는 화면 아래 SIZE 버튼이 이미 표·분포를 바꾸고 있어,
+    #   시계열만 $100k 에 묶여 있으면 같은 화면이 서로 다른 규모를 말하게 된다.
     SERIES_PAIRS = ['BTC', 'ETH', 'XAU', 'NVDA']
-    SERIES_SIZE = 100000
+    miss = []
     for coin in SERIES_PAIRS:
-        blk = series_for(coin, SERIES_SIZE)
-        if blk:
-            res['series']['%s|%d' % (coin, SERIES_SIZE)] = blk
-        else:
-            print('   ★시계열 %s 는 표본이 모자라 건너뜀' % coin)
+        for z in SIZES:
+            blk = series_for(coin, z)
+            if blk:
+                res['series']['%s|%d' % (coin, z)] = blk
+            else:
+                miss.append('%s@%s' % (coin, '{:,}'.format(int(z))))
+    if miss:
+        print('   ★시계열에서 빠진 조합(표본 부족): %s' % ' · '.join(miss))
     print('★시계열 %d조합 · 한 선당 최대 %d점' % (len(res['series']), SERIES_MAX))
 
 

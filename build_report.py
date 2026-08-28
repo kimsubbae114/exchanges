@@ -688,7 +688,11 @@ function spikeRows(){
 /* ★시계열 — "저 거래소는 자주 솟구치는구나"를 눈으로 보게 한다.
    요약 숫자는 사건을 지운다. 언제 얼마나 튀었는지는 시간축에서만 보인다.
    종목·사이즈마다 절대 수준이 달라 한 번에 한 조합만 그린다. */
-let SPKKEY = null, SPKLOG = false;
+/* ★시계열이 볼 것 = (종목, **아래 SIZE 버튼이 고른 규모**).
+   전에는 $100k 로 고정돼 있었는데, 같은 화면에서 표와 분포는 SIZE 를 따라가고
+   시계열만 100k 를 말하고 있었다 — 보는 사람이 두 규모를 섞어 읽게 된다. */
+let SPKCOIN = null, SPKLOG = false;
+function spkKey(){ return SPKCOIN + '|' + SZ[ZI]; }
 
 function spkKeys(){ return Object.keys(D.series || {}); }
 
@@ -699,8 +703,15 @@ function drawSpikeChart(){
   if (!svg) return;
   const keys = spkKeys();
   if (!keys.length){ svg.innerHTML = ''; return; }
-  if (!SPKKEY || !S[SPKKEY]) SPKKEY = keys[0];
-  const blk = S[SPKKEY], vens = Object.keys(blk.v);
+  if (!SPKCOIN) SPKCOIN = keys[0].split('|')[0];
+  let key = spkKey();
+  /* 그 규모에 표본이 없으면 그 종목의 다른 규모라도 보여 준다 — 빈 화면보다 낫다 */
+  if (!S[key]){
+    const alt = keys.find(k => k.split('|')[0] === SPKCOIN);
+    if (!alt){ svg.innerHTML = ''; return; }
+    key = alt;
+  }
+  const blk = S[key], vens = Object.keys(blk.v);
   const W = 660, H = 330, L = 46, R = 14, T = 12, B = 34;
 
   /* ★세로 축은 골라 볼 수 있다.
@@ -782,7 +793,7 @@ function drawSpikeChart(){
   svg.innerHTML = g;
 
   document.getElementById('spkCap').textContent =
-    '— ' + SPKKEY.split('|')[0] + ' @ ' + fmtUsd(+SPKKEY.split('|')[1])
+    '— ' + key.split('|')[0] + ' @ ' + fmtUsd(+key.split('|')[1])
     + ' · ' + n + ' readings · '
     + (WITHFEE ? 'slippage + taker fee' : 'slippage only');
   const hint = document.getElementById('spkHint');
@@ -867,7 +878,7 @@ function drawAll(){
   drawSpikes(); drawVerdict(); drawSections(); refreshCoinSel(); drawDist(); drawCov(); }
 
 mkSeg('segZ', SZ.map(function(s,i){ return [String(i), fmtUsd(s)]; }), String(ZI),
-      function(k){ ZI = +k; drawAll(); });
+      function(k){ ZI = +k; drawAll(); drawSpikeChart(); });
 mkSeg('segDG', GROUPS.map(function(g){ return [g, LABEL[g]]; }), DG,
       function(k){ DG = k; SPK = k; refreshCoinSel(); drawDist(); drawSpikes(); });
 mkSeg('segFee', [['1','slippage + fee'], ['0','slippage only']], WITHFEE ? '1' : '0',
@@ -877,9 +888,12 @@ mkSeg('segSpk', [['all','all pairs']].concat(GROUPS.map(g => [g, LABEL[g]]))
       function(k){ SPK = k; drawSpikes(); });
 (function(){
   const keys = spkKeys(); if (!keys.length) return;
-  SPKKEY = keys[0];
-  mkSeg('spkPair', keys.map(k => [k, k.split('|')[0]]), SPKKEY,
-        function(k){ SPKKEY = k; SPKON = null; drawSpikeChart(); });
+  /* 같은 종목이 규모마다 있으므로 버튼은 종목 하나씩만 */
+  const coins = [];
+  for (const k of keys){ const c = k.split('|')[0]; if (coins.indexOf(c) < 0) coins.push(c); }
+  SPKCOIN = coins[0];
+  mkSeg('spkPair', coins.map(c => [c, c]), SPKCOIN,
+        function(c){ SPKCOIN = c; SPKON = null; drawSpikeChart(); });
   mkSeg('spkScale', [['lin', 'linear'], ['log', 'log']], SPKLOG ? 'log' : 'lin',
         function(k){ SPKLOG = (k === 'log'); drawSpikeChart(); });
 })();
