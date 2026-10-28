@@ -208,7 +208,7 @@ for g in ('MAJOR', 'RWA'):
 
 # ── 종목별 ──────────────────────────────────────────────────────────────────
 res['by_coin'] = {}
-for g in ('MAJOR', 'RWA'):
+for g in ('MAJOR', 'RWA', 'TOP'):   # TOP = 비교 콘텐츠용 6종목($100K 만) — 순위 이력·공개 화면엔 안 넣는다
     d0 = main[main.group == g]
     res['by_coin'][g] = {c: table(d0[d0.coin == c]) for c in sorted(d0.coin.unique())}
 

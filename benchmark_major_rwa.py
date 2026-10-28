@@ -78,7 +78,12 @@ MAJOR = ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'DOGE', 'ADA', 'LINK', 'AVAX', 'SUI'
 # 주식·금 퍼프. 거래소별 커버리지가 다르므로 **넓게 걸리는 것** 위주로 골랐다.
 RWA = ['TSLA', 'NVDA', 'AAPL', 'MSTR', 'COIN', 'META', 'PLTR', 'HOOD', 'GOOGL', 'XAU']
 
-GROUPS = {'MAJOR': MAJOR, 'RWA': RWA}
+# 비교 콘텐츠용 '상위 10개' 중 MAJOR 에 없는 6개 (2026-10-28: 5곳 합산 거래대금·미결제약정 순위로 고름 —
+#   ZEC HYPE SOL XRP NEAR ENA DOGE BNB PEPE WLD). MAJOR 이력을 끊지 않으려고 따로 둔다. $100K 만 잰다.
+TOP = ['ZEC', 'HYPE', 'NEAR', 'ENA', 'PEPE', 'WLD']
+
+GROUPS = {'MAJOR': MAJOR, 'RWA': RWA, 'TOP': TOP}
+GROUP_SIZES = {'TOP': [100_000]}   # 그룹별로 잴 크기를 줄일 때만 적는다(없으면 USD_SIZES)
 
 # ★모든 자산을 **같은 달러 사다리**로 잰다. 그래야 메이저와 RWA 를 나란히 놓고 볼 수 있다.
 #   못 채우는 것도 정보다 — RWA 에서 $1M 이 book_short 로 뜨면 그게 곧 "그만큼은 못 산다"는 뜻이다.
@@ -145,9 +150,14 @@ S.headers.update(UA)
 # ══════════════════════════════════════════════════════════════════════════════
 # ★예외만 적는다. 나머지는 규칙으로 만든다.
 SYMBOL_OVERRIDE = {
-    'kucoin':   {'BTC': 'XBT', 'XAU': 'XAUT'},          # kucoin 은 BTC 가 XBT, 금은 XAUT
+    'kucoin':   {'BTC': 'XBT', 'XAU': 'XAUT'},
+    'binance':  {'PEPE': '1000PEPE'},                   # 1000단위 계약 — 달러 금액은 그대로라 슬리피지 계산엔 영향 없다
+    'bybit':    {'PEPE': '1000PEPE'},
+    'aster':    {'PEPE': '1000PEPE'},
+    'lighter':  {'PEPE': '1000PEPE'},
+    'grvt':     {'PEPE': 'KPEPE'},          # kucoin 은 BTC 가 XBT, 금은 XAUT
     'mexc':     {'AAPL': 'AAPLSTOCK'},                  # mexc 주식은 접미사 STOCK
-    'extended': {'TSLA': 'TSLA_24_5', 'NVDA': 'NVDA_24_5', 'AAPL': 'AAPL_24_5'},
+    'extended': {'PEPE': '1000PEPE', 'TSLA': 'TSLA_24_5', 'NVDA': 'NVDA_24_5', 'AAPL': 'AAPL_24_5'},
 }
 
 
@@ -347,6 +357,8 @@ _HL_XYZ_ONLY = {'TSLA', 'NVDA', 'AAPL', 'MSTR', 'COIN', 'META', 'PLTR', 'HOOD',
 
 def hl_coin(c):
     """하이퍼리퀴드에서 이 종목을 뭐라고 부르나."""
+    if c == 'PEPE':
+        return 'kPEPE'             # 1000단위 계약
     if c in _HL_XYZ_ONLY:
         return 'xyz:' + c
     if c == 'XAU':
@@ -544,7 +556,7 @@ def run_round(groups=None, venues=None, log=print, sizes=None, pace=PACE_SEC, rn
             for v in list(venues) + (['hyperliquid_raw'] if 'hyperliquid' in venues else []):
                 bk = books.get(v)
                 bu, au = book_usd(bk)
-                for usd in sizes:
+                for usd in (GROUP_SIZES.get(gname) or sizes):
                     for side in ('buy', 'sell'):
                         bps, note, used = slippage(bk, usd, side)
                         rows.append({
