@@ -91,6 +91,8 @@ GROUP_SIZES = {'TOP': [100_000]}   # 그룹별로 잴 크기를 줄일 때만 �
 #   ★실측 참고: BTC 는 $100k 까지 최우선 1레벨에서 채워져 거래소 간 차이가 0.01bps 로 뭉갠다.
 #     변별력은 $500k 부터 생긴다($1M 에서 0.02~1.76bps, $5M 에서 1.02~6.08bps).
 USD_SIZES = [10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000]   # 250K 추가 2026-10-28 (대표님: ETH 비교 $100K/250K/500K)
+COIN_EXTRA = {'BTC': [5_000_000], 'ETH': [2_500_000], 'ZEC': [500_000], 'NEAR': [500_000],
+              'HYPE': [250_000], 'ENA': [250_000], 'WLD': [250_000], 'PEPE': [250_000]}   # 2026-10-29 대표님 큰 사이즈 목표(big_sizes.json) — 그 코인만 매 라운드 추가로 잰다
 USD_SIZES_EXTRA = [5_000_000]        # --big 을 주면 여기까지 잰다(메이저 변별용)
 
 # ★참고용 taker 수수료 — **최저 등급(할인 없음) 기준**으로 통일한다.
@@ -337,7 +339,7 @@ def book_kucoin(c):
 
 def book_grvt(c):
     r = S.post('https://market-data.grvt.io/full/v1/book',
-               json={'instrument': sym('grvt', c), 'depth': 100}, timeout=TIMEOUT)
+               json={'instrument': sym('grvt', c), 'depth': 500}, timeout=TIMEOUT)
     if not _ok(r):
         # ★호출 자체가 실패했다. '미상장'과 구분해야 한다 —
         #   섞으면 차단당한 거래소가 조용히 순위에서 빠져 화면이 거짓말을 한다.
@@ -556,7 +558,7 @@ def run_round(groups=None, venues=None, log=print, sizes=None, pace=PACE_SEC, rn
             for v in list(venues) + (['hyperliquid_raw'] if 'hyperliquid' in venues else []):
                 bk = books.get(v)
                 bu, au = book_usd(bk)
-                for usd in (GROUP_SIZES.get(gname) or sizes):
+                for usd in list(GROUP_SIZES.get(gname) or sizes) + [z for z in COIN_EXTRA.get(coin, []) if z not in (GROUP_SIZES.get(gname) or sizes)]:
                     for side in ('buy', 'sell'):
                         bps, note, used = slippage(bk, usd, side)
                         rows.append({
