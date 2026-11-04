@@ -142,7 +142,9 @@ def load_fees(log=print):
 
 UA = {'User-Agent': 'liquidity-benchmark/1.0'}
 TIMEOUT = 10
-S = requests.Session()
+# 11-04 이슈 133: 같은 IP 의 거래소 요청은 공용 예산 장부(~/api_hub/apibudget.py)를 거친다 — Binance·HL·OKX·Bybit·Bitget·GRVT 합계를 한도 70% 아래로
+sys.path.insert(0, os.path.expanduser('~/api_hub')); import apibudget
+S = apibudget.session('monitor')
 S.verify = False
 S.headers.update(UA)
 
